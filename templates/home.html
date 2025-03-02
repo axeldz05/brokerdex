@@ -1,0 +1,29 @@
+{% extends "layout.html" %}
+
+{% block content %}
+{% load static %}
+
+<!-- Features Section -->
+<section class="py-5 bg-light">
+    <div class="container">
+        <div class="section-title text-center mb-4">
+            <h2>Features</h2>
+            <p>With an intuitive interface and advanced security features, BankD ensures that your banking experience is smooth, reliable, and accessible anytime, anywhere.</p>
+        </div>
+        <div class="row align-items-center">
+            <div class="col-md-5">
+                <img src="{% static 'banking/assets/img/placeholder-512-512.png' %}" class="img-fluid rounded" alt="Features Image">
+            </div>
+            <div class="col-md-7">
+                <h3>Choose any of the customers you wish to transact with.</h3>
+                <p class="fst-italic">One can use the search filter to find the desired customer for a transaction.</p>
+                <ul class="list-unstyled">
+                    <li class="mb-2"><i class="bi bi-check-circle-fill text-success me-2"></i>Find and pay the people with lightning fast service.</li>
+                    <li class="mb-2"><i class="bi bi-check-circle-fill text-success me-2"></i>Zero Cost Transaction and Zero Payment Limit.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</section>
+
+{% endblock %}
