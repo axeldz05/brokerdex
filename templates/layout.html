@@ -88,8 +88,8 @@
                                 Profile
                             </button>
                             <ul class="dropdown-menu">
-                                <li><a class="dropdown-item" href="#">Settings</a></li>
-                                <li><a class="dropdown-item" href="#">Sign Out</a></li>
+                                <li><a class="dropdown-item" href="{% url 'account:settings' %}">Settings</a></li>
+                                <li><a class="dropdown-item" href="{% url 'account:logout' %}">Sign Out</a></li>
                             </ul>
                         </div>
                         {% endif %}
