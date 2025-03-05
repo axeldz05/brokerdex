@@ -85,3 +85,16 @@ class CustomUserForm(UserCreationForm):
             'password1',
             'password2',
         )
+
+class GeneralSettingsForm(forms.ModelForm):
+    class Meta:
+        model = User
+        fields = ['username', 'email', 'first_name', 'last_name']
+
+    def __init__(self, *args, **kwargs):
+        super(GeneralSettingsForm, self).__init__(*args, **kwargs)
+        self.fields['username'].disabled = True
+        self.fields['email'].disabled = True
+
+        self.fields['username'].widget.attrs.update({'readonly': 'readonly'})
+        self.fields['email'].widget.attrs.update({'readonly': 'readonly'})
