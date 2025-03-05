@@ -15,7 +15,7 @@
                 <a href="{% url 'account:settings' %}?section=account" class="list-group-item list-group-item-action {% if section == 'account' %}active{% endif %}">
                     Account Settings
                 </a>
-                <a href="{% url 'account:settings' %}?section=accounts" class="list-group-item list-group-item-action {% if section == 'accounts' %}active{% endif %}">
+                <a href="{% url 'account:settings' %}?section=bank_accounts" class="list-group-item list-group-item-action {% if section == 'accounts' %}active{% endif %}">
                     Bank Accounts
                 </a>
             </div>
@@ -62,9 +62,8 @@
                 {% endfor %}
                 <button type="submit" class="btn btn-primary">Update Account Settings</button>
             </form>
-            {% elif section == "accounts" %}
+            {% elif section == "bank_accounts" %}
             <h3>Bank Accounts</h3>
-            <!-- Example table to manage bank accounts -->
             <table class="table">
                 <thead>
                     <tr>

@@ -1,15 +1,27 @@
 {% extends "layout.html" %}
 {% load static %}
+{% load humanize %}
 
 {% block content %}
 
-<!-- Dashboard Container -->
 <div class="container my-5">
     <!-- User Balance -->
     <div class="card">
         <div class="card-body">
             <h5 class="card-title">Current Balance</h5>
-            <h2 class="display-4">$10,000.00</h2>
+            <h2 class="display-4">${{ user.account.current_balance | intcomma}}</h2>
+        </div>
+    </div>
+    <!-- Quick Actions -->
+    <div class="card">
+        <div class="card-body text-center">
+            <h5 class="card-title">Quick Actions</h5>
+            <div class="action-btns">
+                <a href="#" class="btn btn-primary">Transaction</a>
+                <a href="#" class="btn btn-success">Invest</a>
+                <a href="#" class="btn btn-warning">Withdraw</a>
+                <a href="#" class="btn btn-info text-white">Deposit</a>
+            </div>
         </div>
     </div>
 
@@ -17,7 +29,6 @@
     <div class="card">
         <div class="card-body">
             <h5 class="card-title">Investments & Stocks</h5>
-            <!-- Placeholder for graph (replace with Chart.js or another charting library) -->
             <div class="chart-container" style="position: relative; height:300px;">
                 <canvas id="investmentChart"></canvas>
             </div>
@@ -48,18 +59,6 @@
         </div>
     </div>
 
-    <!-- Action Buttons -->
-    <div class="card">
-        <div class="card-body text-center">
-            <h5 class="card-title">Quick Actions</h5>
-            <div class="action-btns">
-                <a href="#" class="btn btn-primary">Transaction</a>
-                <a href="#" class="btn btn-success">Invest</a>
-                <a href="#" class="btn btn-warning">Withdraw</a>
-                <a href="#" class="btn btn-info text-white">Deposit</a>
-            </div>
-        </div>
-    </div>
 </div>
 
 {% endblock %}
