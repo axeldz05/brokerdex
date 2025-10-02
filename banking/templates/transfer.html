@@ -1,0 +1,91 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <!-- Balance Display -->
+            <div class="card mb-4">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Current Balance</h5>
+                    <h2 class="text-primary">${{ user_balance }}</h2>
+                </div>
+            </div>
+
+            <!-- Transfer Form -->
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="mb-0">Transfer Funds</h4>
+                </div>
+                <div class="card-body">
+                    <!-- Recipient Form -->
+                    <form method="POST" id="recipient-form" class="{% if not show_amount %}d-block{% else %}d-none{% endif %}">
+                        {% csrf_token %}
+                        <div class="mb-3">
+                            <label for="recipient_username" class="form-label">Recipient Username</label>
+                            <input type="text" 
+                                   class="form-control {% if recipient_form.recipient_username.errors %}is-invalid{% endif %}" 
+                                   id="recipient_username"
+                                   name="recipient_username" 
+                                   value="{{ recipient_form.recipient_username.value|default:'' }}"
+                                   required>
+                            {% if recipient_form.recipient_username.errors %}
+                                <div class="invalid-feedback">
+                                    {{ recipient_form.recipient_username.errors.0 }}
+                                </div>
+                            {% endif %}
+                        </div>
+                        <button type="submit" class="btn btn-primary" name="verify_recipient">Verify Recipient</button>
+                    </form>
+
+                    <!-- Amount Form -->
+                    {% if show_amount %}
+                    <form method="POST" id="amount-form">
+                        {% csrf_token %}
+                        <input type="hidden" name="recipient_username" value="{{ recipient_username }}">
+                        
+                        <div class="mb-3">
+                            <label for="amount" class="form-label">Transfer Amount (Max: ${{ user_balance }})</label>
+                            <input type="number" 
+                                   class="form-control {% if amount_form.amount.errors %}is-invalid{% endif %}" 
+                                   id="amount"
+                                   name="amount" 
+                                   step="0.01"
+                                   min="0.01"
+                                   max="{{ user_balance }}"
+                                   required>
+                            {% if amount_form.amount.errors %}
+                                <div class="invalid-feedback">
+                                    {{ amount_form.amount.errors.0 }}
+                                </div>
+                            {% endif %}
+                        </div>
+                        
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-success" name="transfer">Transfer Funds</button>
+                            <a href="{% url 'transfer' %}" class="btn btn-secondary">Cancel</a>
+                        </div>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // This validation may be in another place
+    document.getElementById('amount-form')?.addEventListener('submit', function(e) {
+        const amountInput = document.getElementById('amount');
+        const maxAmount = parseFloat(amountInput.getAttribute('max'));
+        const enteredAmount = parseFloat(amountInput.value);
+        
+        if (enteredAmount > maxAmount) {
+            e.preventDefault();
+            alert('Transfer amount cannot exceed your current balance.');
+        }
+    });
+</script>
+{% endblock %}

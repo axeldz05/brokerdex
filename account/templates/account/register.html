@@ -1,4 +1,5 @@
 {% extends 'layout.html' %}
+{% load crispy_forms_tags %}
 
 {% block title %}
 Register a new user
@@ -6,58 +7,22 @@ Register a new user
 
 {% block content %}
 <section class="py-5">
-    <div class="container">
-        <form method="post" action="{% url 'account:register' %}">
-            {% csrf_token %}
-
-            {% if acc_form.non_field_errors %}
-            <div class="alert alert-danger">
-                {% for error in acc_form.non_field_errors %}
-                <p>{{ error }}</p>
-                {% endfor %}
-            </div>
-            {% endif %}
-            
-            {% if user_form.non_field_errors %}
-            <div class="alert alert-danger">
-                {% for error in user_form.non_field_errors %}
-                <p>{{ error }}</p>
-                {% endfor %}
-            </div>
-            {% endif %}
-
-            {% for field in user_form %}
-            <div class="mb-3">
-                <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
-                {{ field }}
-                {% if field.errors %}
-                <div class="text-danger">
-                    {% for error in field.errors %}
-                    <small>{{ error }}</small><br>
-                    {% endfor %}
+    <div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="mb-0">Create Account</h4>
                 </div>
-                {% endif %}
-            </div>
-            {% endfor %}
-
-            {% for field in acc_form %}
-            <div class="mb-3">
-                <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
-                {{ field }}
-                {% if field.errors %}
-                <div class="text-danger">
-                    {% for error in field.errors %}
-                    <small>{{ error }}</small><br>
-                    {% endfor %}
+                <div class="card-body">
+                    <form method="post">
+                        {% csrf_token %}
+                        {{ form|crispy }}
+                        <button type="submit" class="btn btn-primary w-100">Register</button>
+                    </form>
                 </div>
-                {% endif %}
             </div>
-            {% endfor %}
-            <div class="col-12 mt-3">
-                <button type="submit" class="btn btn-primary">Sign in</button>
-            </div>
-    </div>
-        </form>
         </div>
+    </div>
 </section>
 {% endblock %}

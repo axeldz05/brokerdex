@@ -4,8 +4,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth import login, logout, update_session_auth_hash
 from django.contrib.auth.models import User
 from django.contrib import messages
-from .forms import AccountForm, CustomUserForm, GeneralSettingsForm
-from .models import Account
+from .forms import AccountUpdateForm, AccountRegistrationForm, AuthenticationForm
 
 def log_in(request):
     if request.method == "POST":
@@ -18,20 +17,17 @@ def log_in(request):
     return render(request,'account/login.html',{"form": form})
 
 def register(request):
-    if request.method == "POST":
-        user_form = CustomUserForm(request.POST)
-        acc_form = AccountForm(request.POST)
-        if acc_form.is_valid() and user_form.is_valid():
-            user = user_form.save()
-            acc = acc_form.save(commit=False)
-            acc.user = user
-            acc.save()
+    if request.method == 'POST':
+        form = AccountRegistrationForm(request.POST)
+        if form.is_valid():
+            user = form.save()
             login(request, user)
-            return redirect("index")
+            messages.success(request, 'Account created successfully!')
+            return redirect('index')
     else:
-        user_form = CustomUserForm()
-        acc_form = AccountForm()
-    return render(request,'account/register.html',{"acc_form": acc_form, "user_form": user_form})
+        form = AccountRegistrationForm()
+    
+    return render(request, 'account/register.html', {'form': form})
 
 @login_required(login_url="accounts/login/")
 def log_out(request):
@@ -56,21 +52,16 @@ def settings(request):
             form = PasswordChangeForm(request.user)
         context['password_form'] = form
     elif section == "general":
-        user = User.objects.get(username=request.user)
-        account = request.user.account
+        account = request.user
         if request.method == 'POST':
-            user_form = GeneralSettingsForm(request.POST, instance=request.user)
-            acc_form = AccountForm(request.POST, instance=account)
-            if acc_form.is_valid() and user_form.is_valid():
-                user_form.save()
+            acc_form = AccountUpdateForm(request.POST, instance=account)
+            if acc_form.is_valid():
                 acc_form.save()
                 messages.success(request, 'Your data has been updated successfully!')
                 return redirect(f"{request.path}?section=general")
             else:
                 messages.error(request, 'Please correct the error below.')
         else:
-            user_form = GeneralSettingsForm(instance=request.user)
-            acc_form = AccountForm(instance=account)
-        context['user_form'] = user_form
+            acc_form = AccountUpdateForm(instance=account)
         context['acc_form'] = acc_form
     return render(request, 'account/settings.html', context)
