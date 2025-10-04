@@ -1,4 +1,5 @@
-from django.shortcuts import render
+from django.core.exceptions import ObjectDoesNotExist
+from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 
@@ -6,8 +7,8 @@ from account.models import Account
 from .forms import RecipientForm, AmountForm
 
 @login_required
-def transaction(request):
-    user_balance = request.user.balance
+def transfer(request):
+    user_balance = request.user.balance_dollars
     
     if request.method == 'POST':
         if 'verify_recipient' in request.POST:
@@ -25,7 +26,7 @@ def transaction(request):
                             'recipient_username': recipient_username,
                             'amount_form': AmountForm()
                         })
-                except Account.DoesNotExist:
+                except ObjectDoesNotExist:
                     messages.error(request, "Recipient username not found.")
         
         elif 'transfer' in request.POST:

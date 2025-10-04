@@ -29,12 +29,12 @@ def register(request):
     
     return render(request, 'account/register.html', {'form': form})
 
-@login_required(login_url="accounts/login/")
+@login_required
 def log_out(request):
     logout(request)
     return render(request,'index.html')
 
-@login_required(login_url="accounts/login/")
+@login_required
 def settings(request):
     section = request.GET.get('section', 'general')
     context = {'section': section}

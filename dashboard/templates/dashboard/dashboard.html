@@ -17,10 +17,10 @@
         <div class="card-body text-center">
             <h5 class="card-title">Quick Actions</h5>
             <div class="action-btns">
-                <a href="#" class="btn btn-primary">Transaction</a>
-                <a href="#" class="btn btn-success">Invest</a>
-                <a href="#" class="btn btn-warning">Withdraw</a>
-                <a href="#" class="btn btn-info text-white">Deposit</a>
+                <a href="{% url 'banking:transfer' %}" class="btn btn-primary">Transaction</a>
+                <a href="{% url 'banking:invest' %}" class="btn btn-success">Invest</a>
+                <a href="{% url 'banking:withdraw' %}" class="btn btn-warning">Withdraw</a>
+                <a href="{% url 'banking:deposit' %}" class="btn btn-info text-white">Deposit</a>
             </div>
         </div>
     </div>

@@ -5,9 +5,6 @@ class AccountManager(BaseUserManager):
     use_in_migrations = True
 
     def create_user(self, email, password=None, **extra_fields):
-        """
-        Creates and saves a regular User with the given email and password.
-        """
         if not email:
             raise ValueError(_('The Email must be set'))
         email = self.normalize_email(email)
@@ -17,9 +14,6 @@ class AccountManager(BaseUserManager):
         return user
 
     def create_superuser(self, email, password, **extra_fields):
-        """
-        Creates and saves a superuser with the given email and password.
-        """
         extra_fields.setdefault('is_staff', True)
         extra_fields.setdefault('is_superuser', True)
         extra_fields.setdefault('is_active', True)

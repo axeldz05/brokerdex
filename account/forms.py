@@ -5,6 +5,14 @@ from .models import Account
 from django.contrib.auth.forms import AuthenticationForm
 
 class AccountUpdateForm(forms.ModelForm):
+    username = forms.CharField(
+        disabled=True,
+        widget=forms.TextInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'Your Username',
+            'readonly': 'readonly'
+        })
+    )
     email = forms.EmailField(
         disabled=True,
         widget=forms.EmailInput(attrs={
@@ -56,11 +64,19 @@ class AccountUpdateForm(forms.ModelForm):
     class Meta:
         model = Account
         fields = [
-            'email', 'phone', 'country', 'city', 
+            'username', 'email', 'phone', 'country', 'city', 
             'address', 'postal_or_zip_code'
         ]
 
 class AccountRegistrationForm(UserCreationForm):
+    username = forms.CharField(
+        max_length=254,
+        required=True,
+        widget=forms.TextInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'Enter your username'
+        })
+    )
     email = forms.EmailField(
         max_length=254,
         required=True,
@@ -88,24 +104,25 @@ class AccountRegistrationForm(UserCreationForm):
 
     class Meta:
         model = Account
-        fields = ('email', 'password1', 'password2')
+        fields = ('username', 'email', 'password1', 'password2')
 
     def clean_email(self):
-        """Validate that email is unique"""
         email = self.cleaned_data.get('email')
         if Account.objects.filter(email=email).exists():
             raise ValidationError("An account with this email already exists.")
         return email
+    def clean_username(self):
+        username= self.cleaned_data.get('username')
+        if Account.objects.filter(username=username).exists():
+            raise ValidationError("An account with this username already exists.")
+        return username
 
 class AccountAuthenticationForm(AuthenticationForm):
-    """
-    Custom authentication form using email instead of username
-    """
-    username = forms.EmailField(
-        label='Email',
-        widget=forms.EmailInput(attrs={
+    username = forms.CharField(
+        label='Email or Username',
+        widget=forms.TextInput(attrs={
             'class': 'form-control',
-            'placeholder': 'Your email address',
+            'placeholder': 'Your email address or username',
             'autofocus': True
         })
     )
@@ -118,8 +135,9 @@ class AccountAuthenticationForm(AuthenticationForm):
     )
     
     def clean_username(self):
-        """Validate that the email exists"""
-        email = self.cleaned_data.get('username')
-        if not Account.objects.filter(email=email).exists():
-            raise ValidationError("No account found with this email address.")
-        return email
+        username = self.cleaned_data.get('username')
+        if not Account.objects.filter(email=username).exists() and \
+           not Account.objects.filter(username=username).exists():
+            raise ValidationError("No account found with this email address or username.")
+        
+        return username

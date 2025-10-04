@@ -5,6 +5,7 @@ from .managers import AccountManager
 
 class Account(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(_('email address'), unique=True)
+    username = models.CharField(max_length=20, unique=True)
     
     phone = models.CharField(max_length=20, blank=True)
     country = models.CharField(max_length=20, blank=True)
@@ -20,7 +21,7 @@ class Account(AbstractBaseUser, PermissionsMixin):
 
     date_joined = models.DateTimeField(auto_now_add=True)
 
-    USERNAME_FIELD = 'email'
+    USERNAME_FIELD = 'username'
     objects = AccountManager()
 
     def __str__(self):
