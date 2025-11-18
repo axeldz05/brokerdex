@@ -22,10 +22,11 @@ class Account(AbstractBaseUser, PermissionsMixin):
     date_joined = models.DateTimeField(auto_now_add=True)
 
     USERNAME_FIELD = 'username'
+    REQUIRED_FIELDS = ['email']
     objects = AccountManager()
 
     def __str__(self):
-        return self.email
+        return self.username
 
     @property
     def balance_dollars(self):
