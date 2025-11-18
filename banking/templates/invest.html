@@ -254,8 +254,11 @@
                                     <td class="text-end">
                                         <div class="creature-price">${{ creature.previous_close|floatformat:2 }}</div>
                                     </td>
+                                    {% load type_colors %}
                                     <td class="text-end">
-                                        <div class="creature-type">{{ creature.type }}</div>
+                                        <div class="creature-type" style="color: {{ creature.type|get_type_color }};">
+                                            {{ creature.type }}
+                                        </div>
                                     </td>
                                 </tr>
                                 {% empty %}
