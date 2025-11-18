@@ -16,6 +16,13 @@ import os
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# Media files configuration
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# Optional: Configure storage backend (default is filesystem)
+DEFAULT_FILE_STORAGE = 'django.core.files.storage.FileSystemStorage'
+
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
@@ -48,7 +55,7 @@ INSTALLED_APPS = [
 CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
 CRISPY_TEMPLATE_PACK = "bootstrap5"
 
-EXTERNAL_APPS = ['banking', 'account', 'dashboard']
+EXTERNAL_APPS = ['banking', 'account', 'dashboard', 'creature']
 
 INSTALLED_APPS += EXTERNAL_APPS
 
@@ -62,7 +69,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-ROOT_URLCONF = 'bankd.urls'
+ROOT_URLCONF = 'brokerdex.urls'
 
 TEMPLATES = [
     {
@@ -80,7 +87,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'bankd.wsgi.application'
+WSGI_APPLICATION = 'brokerdex.wsgi.application'
 
 
 # Database
@@ -88,8 +95,13 @@ WSGI_APPLICATION = 'bankd.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'brokerdex_db',
+        'USER': 'brokerdex_user',
+        'PASSWORD': '',
+        'HOST': 'localhost',
+        'PORT': '5432'
+        
     }
 }
 
