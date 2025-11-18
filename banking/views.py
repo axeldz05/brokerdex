@@ -4,10 +4,11 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 
 from account.models import Account
+from creature.models import Creature
 from .forms import RecipientForm, AmountForm
 
 @login_required
-def transfer(request):
+def exchange(request):
     user_balance = request.user.balance_dollars
     
     if request.method == 'POST':
@@ -29,7 +30,7 @@ def transfer(request):
                 except ObjectDoesNotExist:
                     messages.error(request, "Recipient username not found.")
         
-        elif 'transfer' in request.POST:
+        elif 'exchange' in request.POST:
             amount_form = AmountForm(request.POST)
             if amount_form.is_valid():
                 amount = amount_form.cleaned_data['amount']
@@ -50,12 +51,15 @@ def transfer(request):
 
 @login_required
 def withdraw(request):
-    return render(request,'banking/withdraw.html',{})
+    return render(request,'withdraw.html',{})
 
 @login_required
 def invest(request):
-    return render(request,'banking/invest.html',{})
+    return render(request, 'invest.html', {
+        'creatures': Creature.objects.all()
+    })
+
 
 @login_required
 def deposit(request):
-    return render(request,'banking/deposit.html',{})
+    return render(request,'deposit.html',{})
