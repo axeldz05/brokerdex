@@ -73,8 +73,10 @@ class Creature(models.Model):
     
     is_legendary = models.BooleanField(default=False)
     is_mythical = models.BooleanField(default=False)
-
+    
+    # battle related fields
     battle_cooldown = models.DurationField(default=datetime.timedelta(days=0,hours=3))
+    currently_in_battle = models.BooleanField(default=False)
     small_icon = models.ImageField(
         upload_to=creature_image_upload_path,
         blank=True,
@@ -242,8 +244,11 @@ class Battle(models.Model):
         through_fields=('battle', 'creature'),
         related_name='battles'
     )
-    outcome = models.TextField()
     battle_date = models.DateTimeField(auto_now_add=True)
+
+class BattleOutcome(models.Model):
+    battle = models.OneToOneField(Battle, related_name='battleOutcomes', on_delete=models.CASCADE)
+    outcome = models.TextField()
 
 class BattleParticipant(models.Model):
     battle = models.ForeignKey(Battle, on_delete=models.CASCADE)
