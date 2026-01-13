@@ -9,7 +9,7 @@
     <div class="card">
         <div class="card-body">
             <h5 class="card-title">Current Balance</h5>
-            <h2 class="display-4">${{ user.account.current_balance | intcomma}}</h2>
+            <h2 class="display-4">${{ user.balance_dollars | intcomma}}</h2>
         </div>
     </div>
     <!-- Quick Actions -->
@@ -56,6 +56,24 @@
                 <p><strong>Income:</strong> $5,000.00</p>
                 <p><strong>Expenses:</strong> $3,200.00</p>
             </div>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-body">
+            <h5 class="card-title mb-0">Transaction History</h5>
+            {% for t in transactions %}
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <span>{{ t.date }}</span>
+
+                {% if t.sender == request.user.account %}
+                <span class="red"> - ${{ t.amount }} (Sent to {{ t.receiver }})</span>
+                {% else %}
+                <span class="green"> + ${{ t.amount }} (Received from {{ t.sender }})</span>
+                {% endif %}
+            </div>
+            {% empty %}
+                <span class="gray">No hay transacciones todavía.</span>
+            {% endfor %}
         </div>
     </div>
 

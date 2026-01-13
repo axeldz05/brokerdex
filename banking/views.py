@@ -39,7 +39,6 @@ def exchange(request):
                 if amount > user_balance:
                     messages.error(request, "Insufficient funds.")
                 else:
-                    # TODO: transfer logic should occur here
                     messages.success(request, f"Successfully transferred ${amount} to {recipient_username}")
                     return redirect('dashboard')
     

@@ -3,4 +3,6 @@ from django.shortcuts import render
 
 @login_required
 def dashboard(request):
-    return render(request, 'dashboard/dashboard.html')
+    account = request.user.account
+    transactions = account.get_transaction_history()
+    return render(request, 'dashboard/dashboard.html', {'transactions': transactions})

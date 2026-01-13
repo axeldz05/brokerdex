@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.models import Q
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
 from django.utils.translation import gettext_lazy as _
 from .managers import AccountManager
@@ -35,3 +36,22 @@ class Account(AbstractBaseUser, PermissionsMixin):
     @balance_dollars.setter
     def balance_dollars(self, value):
         self.balance_cents = int(round(value * 100))
+
+    def get_transaction_history(self):
+        from banking.models import Transfer 
+        qs = Transfer.objects.filter(
+            Q(sender=self) | Q(receiver=self)
+        ).order_by('-date')
+        
+        return qs
+
+    @property
+    def balance_audit(self):
+        history = self.get_transaction_history()
+        total = 0
+        for t in history:
+            if t.receiver == self:
+                total += t.amount
+            elif t.sender == self:
+                total -= t.amount
+        return total
