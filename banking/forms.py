@@ -1,14 +1,12 @@
 from django import forms
 
-class RecipientForm(forms.Form):
-    recipient_username = forms.CharField(
-        max_length=150,
-        widget=forms.TextInput(attrs={'class': 'form-control'})
-    )
+class TransferForm(forms.Form):
+    receiver_username = forms.CharField(label="Recipient", max_length=150)
+    amount = forms.IntegerField(label="Funds", min_value=1)
 
-class AmountForm(forms.Form):
-    amount = forms.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        widget=forms.NumberInput(attrs={'class': 'form-control'})
-    )
+    def clean_receiver_username(self):
+        from account.models import Account
+        username = self.cleaned_data['receiver_username']
+        if not Account.objects.filter(username=username).exists():
+            raise forms.ValidationError(u'Username "%s" does not exist.' % username)
+        return username
