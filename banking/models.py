@@ -76,7 +76,7 @@ class Transfer(models.Model):
             raise e
 
     def __str__(self):
-        return f"{self.user}" or "Exchange with no user attached"
+        return f"Transfer of {self.sender} to {self.receiver}"
 
 class CreditCard(models.Model):
     user = models.ForeignKey(Account, on_delete=models.CASCADE)

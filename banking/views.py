@@ -1,52 +1,48 @@
-from django.core.exceptions import ObjectDoesNotExist
+from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 
 from account.models import Account
 from creature.models import Creature
-from .forms import RecipientForm, AmountForm
+from .forms import TransferForm
 
 @login_required
-def exchange(request):
-    user_balance = request.user.balance_dollars
-    
+
+def transfer(request):
     if request.method == 'POST':
-        if 'verify_recipient' in request.POST:
-            recipient_form = RecipientForm(request.POST)
-            if recipient_form.is_valid():
-                recipient_username = recipient_form.cleaned_data['recipient_username']
-                try:
-                    recipient = Account.objects.get(username=recipient_username)
-                    if recipient == request.user:
-                        messages.error(request, "You cannot transfer to yourself.")
-                    else:
-                        return render(request, 'transfer.html', {
-                            'user_balance': user_balance,
-                            'show_amount': True,
-                            'recipient_username': recipient_username,
-                            'amount_form': AmountForm()
-                        })
-                except ObjectDoesNotExist:
-                    messages.error(request, "Recipient username not found.")
+        form = TransferForm(request.POST)
         
-        elif 'exchange' in request.POST:
-            amount_form = AmountForm(request.POST)
-            if amount_form.is_valid():
-                amount = amount_form.cleaned_data['amount']
-                recipient_username = request.POST.get('recipient_username')
-                
-                if amount > user_balance:
-                    messages.error(request, "Insufficient funds.")
-                else:
-                    messages.success(request, f"Successfully transferred ${amount} to {recipient_username}")
-                    return redirect('dashboard')
-    
-    return render(request, 'transfer.html', {
-        'user_balance': user_balance,
-        'recipient_form': RecipientForm(),
-        'show_amount': False
-    })
+        if form.is_valid():
+            amount = form.cleaned_data['amount']
+            receiver_username = form.cleaned_data['receiver_username']
+            
+            try:
+                from .models import Transfer
+
+                receiver_acc = Account.objects.get(username=receiver_username)
+                Transfer.objects.create_transaction(
+                    sender=request.user,
+                    receiver=receiver_acc,
+                    amount=amount
+                )
+                messages.success(request, f"Transaction of ${amount} realized succesfully!")
+                return redirect('dashboard')
+            
+            except ValidationError as e:
+                messages.error(request, e.message)
+            
+            except Exception as e:
+                messages.error(request, f"Error: {str(e)}")
+        else:
+            for field, errors in form.errors.items():
+                for error in errors:
+                    messages.error(request, f"{field}: {error}")
+
+    else:
+        form = TransferForm()
+
+    return render(request, 'transfer.html', {'form': form})
 
 @login_required
 def withdraw(request):
