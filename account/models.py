@@ -7,6 +7,8 @@ from .managers import AccountManager
 class Account(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(_('email address'), unique=True)
     username = models.CharField(max_length=20, unique=True)
+    cvu = models.CharField(max_length=22, unique=True, null=True, blank=True) 
+    alias = models.CharField(max_length=100, unique=True, null=True, blank=True)
     
     phone = models.CharField(max_length=20, blank=True)
     country = models.CharField(max_length=20, blank=True)
