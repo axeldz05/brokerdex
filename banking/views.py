@@ -5,7 +5,7 @@ from django.contrib import messages
 
 from account.models import Account
 from creature.models import Creature
-from .forms import TransferForm
+from .forms import TransferForm, WithdrawForm
 
 @login_required
 
@@ -46,7 +46,29 @@ def transfer(request):
 
 @login_required
 def withdraw(request):
-    return render(request,'withdraw.html',{})
+    account = request.user
+    balance_float = account.balance_cents / 100.0 
+    if request.method == 'POST':
+        form = WithdrawForm(request.POST, account=account)
+        if form.is_valid():
+            try:
+                Transfer.objects.process_external_withdrawal(
+                    sender=account,
+                    target_cvu=form.cleaned_data['target_identifier'],
+                    amount=form.cleaned_data['amount']
+                )
+                messages.success(request, "Retiro en proceso.")
+                return redirect('dashboard')
+            except Exception as e:
+                messages.error(request, str(e))
+    else:
+        form = WithdrawForm()
+
+    return render(request, 'withdraw.html', {
+        'form': form,
+        'user_balance': f"{balance_float:,.2f}",
+        'user_balance_float': balance_float,
+    })
 
 @login_required
 def invest(request):

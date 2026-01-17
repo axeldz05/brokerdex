@@ -1,0 +1,106 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6 col-lg-5">
+
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-white border-bottom-0 pt-4 pb-0 text-center">
+                    <h5 class="card-title text-secondary mb-0">Withdraw Funds</h5>
+                    <p class="small text-muted">To external account (CBU/CVU or Alias)</p>
+                </div>
+
+                <div class="card-body p-4">
+                    
+                    <div class="alert alert-light border d-flex justify-content-between align-items-center mb-4">
+                        <span class="text-muted small text-uppercase fw-bold">Available</span>
+                        <span class="fs-4 fw-bold text-dark" id="display-balance">${{ user_balance }}</span>
+                    </div>
+
+                    <form method="POST" id="withdraw-form" novalidate>
+                        {% csrf_token %}
+
+                        <div class="mb-4">
+                            <label for="target_identifier" class="form-label text-muted small fw-bold">Destination</label>
+                            <input type="text" 
+                                   class="form-control form-control-lg" 
+                                   id="target_identifier" 
+                                   name="target_identifier"
+                                   placeholder="Ej: 0000... o mi.alias.banco"
+                                   required>
+                            <div class="form-text">Enter the CBU, CVU or Alias of the destination account.</div>
+                        </div>
+
+                        <div class="mb-4">
+                            <label for="amount" class="form-label text-muted small fw-bold">Amount to withdraw</label>
+                            <div class="input-group input-group-lg">
+                                <span class="input-group-text bg-white border-end-0 text-muted">$</span>
+                                <input type="number" 
+                                       class="form-control border-start-0 ps-0" 
+                                       id="amount" 
+                                       name="amount" 
+                                       step="0.01" 
+                                       min="1"
+                                       placeholder="0.00"
+                                       required>
+                                <button class="btn btn-outline-secondary" type="button" id="btn-max">Max</button>
+                            </div>
+                            <div id="amount-error" class="invalid-feedback">
+                                The amount exceeds your current balance.
+                            </div>
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary btn-lg py-3" id="submit-btn">
+                                Confirm withdraw
+                            </button>
+                            <a href="{% url 'dashboard:dashboard' %}" class="btn btn-link text-decoration-none text-muted">Cancel</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div class="text-center mt-3 text-muted small">
+                <p>Transactions may take 24 bussines hours.</p>
+            </div>
+
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const amountInput = document.getElementById('amount');
+        const maxBtn = document.getElementById('btn-max');
+        const submitBtn = document.getElementById('submit-btn');
+        const errorDiv = document.getElementById('amount-error');
+        
+        const maxBalance = parseFloat("{{ user_balance_float|default:0 }}".replace(',', '.'));
+
+        maxBtn.addEventListener('click', function() {
+            amountInput.value = maxBalance.toFixed(2);
+            validateAmount();
+        });
+        amountInput.addEventListener('input', validateAmount);
+
+        function validateAmount() {
+            const currentVal = parseFloat(amountInput.value);
+
+            if (currentVal > maxBalance) {
+                amountInput.classList.add('is-invalid');
+                submitBtn.disabled = true;
+                errorDiv.style.display = 'block';
+            } else if (currentVal <= 0) {
+                 submitBtn.disabled = true;
+            } else {
+                amountInput.classList.remove('is-invalid');
+                submitBtn.disabled = false;
+                errorDiv.style.display = 'none';
+            }
+        }
+    });
+</script>
+{% endblock %}
