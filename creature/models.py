@@ -1,14 +1,14 @@
-from django.db import models
+from django.db import models, transaction
 import os
 import uuid
 import datetime
 
-from django.forms.widgets import Select
-from django_better_admin_arrayfield.models.fields import ArrayField
+from django.db.models.signals import m2m_changed
+from django.dispatch import receiver
+from django.utils import timezone
 from django.core.exceptions import ValidationError
 
 def creature_image_upload_path(instance, filename):
-    """Generate upload path for creature images with type specification"""
     ext = filename.split('.')[-1]
     filename = f"{uuid.uuid4()}.{ext}"
     return os.path.join('creatures', filename)
@@ -36,7 +36,7 @@ class PrimaryType(models.TextChoices):
 class Creature(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    name = models.CharField(max_length=100)
+    name = models.CharField(max_length=100, unique=True)
     description = models.TextField()
     type = models.CharField(max_length=15, choices=PrimaryType.choices)
     secondary_type = models.CharField(
@@ -55,12 +55,7 @@ class Creature(models.Model):
     special_defense = models.PositiveIntegerField(default=20)
     speed = models.PositiveIntegerField(default=80)
     
-    abilities = ArrayField(
-        models.PositiveIntegerField(),
-        size=4,
-        default=list,
-        blank=True,
-    )
+    abilities = models.ManyToManyField('Ability', blank=True, related_name='creatures')
 
     evolves_from = models.ForeignKey(
         'self',
@@ -76,6 +71,7 @@ class Creature(models.Model):
     
     # battle related fields
     battle_cooldown = models.DurationField(default=datetime.timedelta(days=0,hours=3))
+    cooldown_expires_at = models.DateTimeField(default=timezone.now)
     currently_in_battle = models.BooleanField(default=False)
     small_icon = models.ImageField(
         upload_to=creature_image_upload_path,
@@ -104,33 +100,18 @@ class Creature(models.Model):
        return Ability.objects.filter(id__in=self.abilities)
     
     def add_ability(self, ability):
-        if isinstance(ability, Ability):
-            ability_id = ability.id
-        else:
-            ability_id = ability
-            
-        if ability_id not in self.abilities and len(self.abilities) < 4:
-            self.abilities.append(ability_id)
-        else:
-            raise ValidationError("Cannot add more than 4 abilities or ability already exists")
-    
+        if not self.pk:
+            raise ValidationError("You must save the creature before adding abilities.")
+        if self.abilities.count() >= 4:
+            raise ValidationError("Cannot add more than 4 abilities")
+        if self.abilities.filter(id=ability.id).exists():
+            raise ValidationError("Ability already exists on this creature")
+        self.abilities.add(ability)    
+
     def remove_ability(self, ability_id):
         if ability_id in self.abilities:
             self.abilities.remove(ability_id)
-    
-    def clean(self):
-        """Validate the creature data"""
-        if len(self.abilities) > 4:
-            raise ValidationError("A creature cannot have more than 4 abilities")
-        
-        existing_ability_ids = set(Ability.objects.filter(
-            id__in=self.abilities
-        ).values_list('id', flat=True))
-        
-        for ability_id in self.abilities:
-            if ability_id not in existing_ability_ids:
-                raise ValidationError(f"Ability with ID {ability_id} does not exist")
-    
+
     def __str__(self):
         types = f"{self.type}"
         if self.secondary_type:
@@ -152,6 +133,19 @@ class Creature(models.Model):
         if self.large_icon and hasattr(self.large_icon, 'url'):
             return self.large_icon.url
         return None
+    def is_available_for_battle(self):
+        from django.utils import timezone
+        if self.currently_in_battle:
+            return False
+        if self.cooldown_expires_at > timezone.now():
+            return False
+        return True
+
+    def end_battle(self):
+        from django.utils import timezone
+        self.currently_in_battle = False
+        self.cooldown_expires_at = timezone.now() + self.battle_cooldown
+        self.save()
 
 class Ability(models.Model):
     class DamageClass(models.TextChoices):
@@ -169,6 +163,7 @@ class Ability(models.Model):
         RANDOM_OPPONENT = 'random_opponent', 'Random Opponent'
         FIELD = 'field', 'Field'
 
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=50, unique=True)
     description = models.TextField()
     ability_type = models.CharField(max_length=15, choices=PrimaryType.choices)
@@ -237,24 +232,114 @@ class Ability(models.Model):
         verbose_name_plural = "Abilities"
         ordering = ['name']
 
-class Battle(models.Model):
-    creatures = models.ManyToManyField(
-        Creature, 
-        through='BattleParticipant',
-        through_fields=('battle', 'creature'),
-        related_name='battles'
-    )
-    battle_date = models.DateTimeField(auto_now_add=True)
+class BattleManager(models.Manager):
+    def start_battle(self, creature_1, creature_2):
+        if creature_1 == creature_2:
+            raise ValidationError("A creature cannot fight with itself")
+        if not creature_1.is_available_for_battle():
+            raise ValidationError(f"{creature_1.name} is not available to fight.")
+        if not creature_2.is_available_for_battle():
+            raise ValidationError(f"{creature_2.name} is not available to fight.")
+        with transaction.atomic():
+            creature_1.currently_in_battle = True
+            creature_1.save(update_fields=['currently_in_battle'])
+            creature_2.currently_in_battle = True
+            creature_2.save(update_fields=['currently_in_battle'])
+            battle = self.create(status='active', current_turn=1)
+            BattleParticipant.objects.create(
+                battle=battle,
+                creature=creature_1,
+                current_hp=creature_1.hp
+            )
+            BattleParticipant.objects.create(
+                battle=battle,
+                creature=creature_2,
+                current_hp=creature_2.hp
+            )
+            return battle
 
-class BattleOutcome(models.Model):
-    battle = models.OneToOneField(Battle, related_name='battleOutcomes', on_delete=models.CASCADE)
-    outcome = models.TextField()
+class Battle(models.Model):
+    STATUS_CHOICES = (
+        ('pending', 'Pending'),
+        ('active', 'Active'),
+        ('finished', 'Finished'),
+    )
+    
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
+    current_turn = models.PositiveIntegerField(default=1)
+    winner = models.ForeignKey('BattleParticipant', null=True, blank=True, on_delete=models.SET_NULL, related_name='won_battles')
+    
+    battle_log = models.JSONField(default=list, blank=True) 
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    objects = BattleManager()
+    
+    def record_action(self, actor_participant, target_participant, ability, damage):
+        """Registers an action, calculates damage, status, and determinates if the battle has finished"""
+        if self.status != 'active':
+            raise ValidationError("Cannot record an action in an inactive battle")
+
+        with transaction.atomic():
+            target_participant.current_hp -= damage
+            if target_participant.current_hp <= 0:
+                target_participant.current_hp = 0
+            target_participant.save(update_fields=['current_hp'])
+            
+            description = f"{actor_participant.creature.name} used {ability.name}!"
+            BattleAction.objects.create(
+                battle=self,
+                turn_number=self.current_turn,
+                actor=actor_participant,
+                target=target_participant,
+                ability=ability,
+                damage_dealt=damage,
+                description=description
+            )
+            
+            if target_participant.current_hp == 0:
+                self.status = 'finished'
+                self.winner = actor_participant 
+                self.save(update_fields=['status', 'winner'])
+        
+                actor_participant.creature.end_battle()
+                target_participant.creature.end_battle()
+            else:
+                self.current_turn += 1
+                self.save(update_fields=['current_turn'])
 
 class BattleParticipant(models.Model):
-    battle = models.ForeignKey(Battle, on_delete=models.CASCADE)
-    creature = models.ForeignKey(Creature, on_delete=models.CASCADE)
-    survived = models.BooleanField(default=True)
+    battle = models.ForeignKey(Battle, on_delete=models.CASCADE, related_name='participants')
+    creature = models.ForeignKey('Creature', on_delete=models.CASCADE)
+    current_hp = models.IntegerField(default=0)
     
+    attack_stage = models.IntegerField(default=0)
+    defense_stage = models.IntegerField(default=0)
+    status_ailment = models.CharField(max_length=20, null=True, blank=True)
+
     class Meta:
         unique_together = ['battle', 'creature']
 
+class BattleAction(models.Model):
+    battle = models.ForeignKey(Battle, on_delete=models.CASCADE, related_name='actions')
+    turn_number = models.PositiveIntegerField()
+    actor = models.ForeignKey(BattleParticipant, on_delete=models.CASCADE, related_name='actions_performed')
+    target = models.ForeignKey(BattleParticipant, on_delete=models.CASCADE, related_name='actions_received', null=True)
+    
+    ability = models.ForeignKey('Ability', on_delete=models.SET_NULL, null=True)
+    is_item = models.BooleanField(default=False)
+    
+    damage_dealt = models.IntegerField(default=0)
+    description = models.CharField(max_length=255)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['turn_number', 'timestamp']
+
+
+
+@receiver(m2m_changed, sender=Creature.abilities.through)
+def limit_creature_abilities(sender, instance, action, **kwargs):
+    if action == "pre_add":
+        if instance.abilities.count() + len(kwargs.get('pk_set', [])) > 4:
+            raise ValidationError("A creature cannot have more than 4 abilities.")    

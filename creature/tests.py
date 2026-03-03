@@ -1,3 +1,77 @@
 from django.test import TestCase
+from django.core.exceptions import ValidationError
+from datetime import timedelta
+from unittest.mock import patch
+from .models import Creature, Ability, Battle
 
-# Create your tests here.
+class CreatureAndBattleTests(TestCase):
+    def setUp(self):
+        self.scratch = Ability.objects.create(name="Scratch", ability_type="normal", damage_class="physical", power=40)
+        self.ember = Ability.objects.create(name="Ember", ability_type="fire", damage_class="special", power=40)
+        self.agnidon = Creature.objects.create(
+            name="Agnidon", type="fire", current_price=100.00, hp=39, attack=52, defense=43,
+            battle_cooldown=timedelta(hours=1)
+        )
+        self.bigfin = Creature.objects.create(
+            name="Bigfin", type="water", current_price=100.00, hp=44, attack=48, defense=65,
+            battle_cooldown=timedelta(hours=1)
+        )
+        self.anoleaf = Creature.objects.create(
+            name="Anoleaf", type="grass", current_price=100.00, hp=45,
+            battle_cooldown=timedelta(hours=1)
+        )
+
+    def test_creature_can_have_up_to_4_abilities(self):
+        self.agnidon.abilities.add(self.scratch)
+        self.agnidon.abilities.add(self.ember)
+        ab3 = Ability.objects.create(name="Move_3", ability_type="normal", damage_class="physical")
+        ab4 = Ability.objects.create(name="Move_4", ability_type="normal", damage_class="physical")
+        self.agnidon.abilities.add(ab3, ab4)
+        ab5 = Ability.objects.create(name="Move_5", ability_type="normal", damage_class="physical")
+        with self.assertRaisesMessage(ValidationError, "A creature cannot have more than 4 abilities"):
+            self.agnidon.abilities.add(ab5)
+
+    def test_creature_cannot_be_in_two_battles_simultaneously(self):
+        Battle.objects.start_battle(self.agnidon, self.bigfin)
+        self.agnidon.refresh_from_db()
+        self.assertTrue(self.agnidon.currently_in_battle)
+        with self.assertRaisesMessage(ValidationError, "Agnidon is not available to fight"):
+            Battle.objects.start_battle(self.agnidon, self.anoleaf)
+
+    def test_creature_cannot_battle_itself(self):
+        with self.assertRaisesMessage(ValidationError, "A creature cannot fight with itself"):
+            Battle.objects.start_battle(self.agnidon, self.agnidon)
+
+    def test_battle_ends_when_creature_reaches_zero_hp(self):
+        battle = Battle.objects.start_battle(self.agnidon, self.bigfin)
+        p_agnidon = battle.participants.get(creature=self.agnidon)
+        p_bigfin = battle.participants.get(creature=self.bigfin)
+        
+        # Turn 1: Agnidon attacks Bigfin (Damage = 20, Bigfin's HP drops to 24)
+        battle.record_action(actor_participant=p_agnidon, target_participant=p_bigfin, ability=self.scratch, damage=20)
+        p_bigfin.refresh_from_db()
+        self.assertEqual(p_bigfin.current_hp, 24)
+        self.assertEqual(battle.status, 'active')
+        
+        # Turn 2: Agnidon attacks again with lethal damage (Damage = 30)
+        battle.record_action(actor_participant=p_agnidon, target_participant=p_bigfin, ability=self.ember, damage=30)
+        
+        battle.refresh_from_db()
+        p_bigfin.refresh_from_db()
+        self.agnidon.refresh_from_db()
+        
+        self.assertEqual(p_bigfin.current_hp, 0)
+        self.assertEqual(battle.status, 'finished')
+        self.assertEqual(battle.winner, p_agnidon)
+        self.assertFalse(self.agnidon.currently_in_battle)
+        self.assertFalse(self.agnidon.is_available_for_battle())
+
+    @patch('django.utils.timezone.now')
+    def test_cooldown_expires_correctly(self, mock_now):
+        from datetime import datetime, timezone as dt_timezone
+        current_time = current_time = datetime(2026, 1, 1, 12, 0, 0, tzinfo=dt_timezone.utc)
+        mock_now.return_value = current_time
+        self.agnidon.end_battle()
+        future_time = current_time + timedelta(hours=2)
+        mock_now.return_value = future_time
+        self.assertTrue(self.agnidon.is_available_for_battle())
