@@ -1,0 +1,693 @@
+{% extends "layout.html" %}
+{% load humanize %}
+{% load trading_tags %}
+
+{% block content %}
+<style>
+    :root {
+        --bg-primary: #0d1117;
+        --bg-secondary: #161b22;
+        --bg-card: #1c2128;
+        --border-color: #30363d;
+        --text-primary: #e6edf3;
+        --text-secondary: #8b949e;
+        --accent-green: #3fb950;
+        --accent-red: #f85149;
+        --accent-blue: #58a6ff;
+        --accent-purple: #bc8cff;
+    }
+
+    .detail-page {
+        background: var(--bg-primary);
+        min-height: 100vh;
+        color: var(--text-primary);
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    .detail-header {
+        background: linear-gradient(135deg, var(--bg-secondary), var(--bg-card));
+        border-bottom: 1px solid var(--border-color);
+        padding: 2rem 0;
+    }
+
+    .creature-title {
+        font-size: 2rem;
+        font-weight: 700;
+    }
+
+    .creature-price-display {
+        font-size: 2.5rem;
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .creature-change {
+        font-size: 1.1rem;
+        font-weight: 500;
+    }
+    .positive { color: var(--accent-green); }
+    .negative { color: var(--accent-red); }
+    .neutral { color: var(--text-secondary); }
+
+    .type-badge {
+        display: inline-block;
+        padding: 0.2rem 0.6rem;
+        border-radius: 6px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .card-dark {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 1.5rem;
+    }
+
+    .card-dark h3 {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin-bottom: 1rem;
+    }
+
+    .stat-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.75rem;
+    }
+    .stat-item {
+        background: var(--bg-secondary);
+        border-radius: 8px;
+        padding: 0.75rem;
+        text-align: center;
+    }
+    .stat-item .label {
+        font-size: 0.65rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--text-secondary);
+    }
+    .stat-item .value {
+        font-size: 1.1rem;
+        font-weight: 700;
+        margin-top: 0.15rem;
+    }
+
+    .chart-container {
+        position: relative;
+        height: 320px;
+        background: var(--bg-secondary);
+        border-radius: 10px;
+        padding: 1rem;
+    }
+
+    .interval-tabs {
+        display: flex;
+        gap: 0.25rem;
+        margin-bottom: 1rem;
+    }
+    .interval-tab {
+        padding: 0.35rem 0.75rem;
+        border-radius: 6px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--text-secondary);
+        background: none;
+        border: none;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .interval-tab:hover, .interval-tab.active {
+        background: rgba(88, 166, 255, 0.1);
+        color: var(--accent-blue);
+    }
+
+    .order-form {
+        background: var(--bg-secondary);
+        border-radius: 10px;
+        padding: 1.25rem;
+    }
+
+    .order-tabs {
+        display: flex;
+        gap: 0;
+        margin-bottom: 1rem;
+        border-radius: 8px;
+        overflow: hidden;
+        border: 1px solid var(--border-color);
+    }
+    .order-tab {
+        flex: 1;
+        padding: 0.6rem;
+        text-align: center;
+        font-size: 0.8rem;
+        font-weight: 600;
+        cursor: pointer;
+        border: none;
+        transition: all 0.2s;
+        background: var(--bg-card);
+        color: var(--text-secondary);
+    }
+    .order-tab.active-buy {
+        background: rgba(63, 185, 80, 0.15);
+        color: var(--accent-green);
+    }
+    .order-tab.active-sell {
+        background: rgba(248, 81, 73, 0.15);
+        color: var(--accent-red);
+    }
+
+    .form-input {
+        background: var(--bg-primary);
+        border: 1px solid var(--border-color);
+        color: var(--text-primary);
+        border-radius: 8px;
+        padding: 0.6rem 0.85rem;
+        width: 100%;
+        font-size: 0.9rem;
+    }
+    .form-input:focus {
+        border-color: var(--accent-blue);
+        box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.12);
+        outline: none;
+        color: var(--text-primary);
+        background: var(--bg-primary);
+    }
+
+    .btn-buy {
+        background: var(--accent-green);
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        padding: 0.75rem;
+        width: 100%;
+        font-weight: 700;
+        font-size: 0.9rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .btn-buy:hover { background: #2ea043; color: #fff; }
+
+    .btn-sell {
+        background: var(--accent-red);
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        padding: 0.75rem;
+        width: 100%;
+        font-weight: 700;
+        font-size: 0.9rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .btn-sell:hover { background: #da3633; color: #fff; }
+
+    .trade-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.5rem 0;
+        border-bottom: 1px solid var(--border-color);
+        font-size: 0.85rem;
+    }
+    .trade-row:last-child { border-bottom: none; }
+
+    .holdings-card {
+        background: linear-gradient(135deg, rgba(88, 166, 255, 0.08), rgba(188, 140, 255, 0.08));
+        border: 1px solid rgba(88, 166, 255, 0.2);
+    }
+
+    .order-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.6rem 0;
+        border-bottom: 1px solid var(--border-color);
+        font-size: 0.85rem;
+    }
+
+    .btn-cancel-order {
+        background: rgba(248, 81, 73, 0.1);
+        color: var(--accent-red);
+        border: 1px solid rgba(248, 81, 73, 0.3);
+        border-radius: 6px;
+        padding: 0.25rem 0.6rem;
+        font-size: 0.75rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .btn-cancel-order:hover {
+        background: rgba(248, 81, 73, 0.2);
+    }
+
+    .breadcrumb-nav a {
+        color: var(--accent-blue);
+        text-decoration: none;
+        font-size: 0.875rem;
+    }
+    .breadcrumb-nav span {
+        color: var(--text-secondary);
+        font-size: 0.875rem;
+    }
+
+    .creature-icon-lg {
+        width: 64px;
+        height: 64px;
+        object-fit: contain;
+        border-radius: 8px;
+        background: var(--bg-secondary);
+        padding: 4px;
+    }
+
+    .cost-summary {
+        background: var(--bg-primary);
+        border-radius: 8px;
+        padding: 0.75rem;
+        margin-top: 0.75rem;
+        font-size: 0.8rem;
+    }
+    .cost-summary .row-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 0.2rem 0;
+        color: var(--text-secondary);
+    }
+    .cost-summary .row-item.total {
+        color: var(--text-primary);
+        font-weight: 600;
+        border-top: 1px solid var(--border-color);
+        padding-top: 0.4rem;
+        margin-top: 0.25rem;
+    }
+
+    @media (max-width: 768px) {
+        .creature-price-display { font-size: 1.75rem; }
+        .stat-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+</style>
+
+<div class="detail-page">
+    <div class="detail-header">
+        <div class="container">
+            <div class="breadcrumb-nav mb-3">
+                <a href="{% url 'trading:market' %}">← Market</a>
+            </div>
+            <div class="d-flex align-items-center gap-3 mb-2">
+                {% if creature.large_icon_url %}
+                <img src="{{ creature.large_icon_url }}" alt="{{ creature.name }}" class="creature-icon-lg">
+                {% endif %}
+                <div>
+                    <h1 class="creature-title mb-0">{{ creature.name }}</h1>
+                    <div class="d-flex gap-2 mt-1">
+                        <span class="type-badge"
+                              style="color: {{ creature.type|type_color }}; background: {{ creature.type|type_bg }};">
+                            {{ creature.type }}
+                        </span>
+                        {% if creature.secondary_type %}
+                        <span class="type-badge"
+                              style="color: {{ creature.secondary_type|type_color }}; background: {{ creature.secondary_type|type_bg }};">
+                            {{ creature.secondary_type }}
+                        </span>
+                        {% endif %}
+                        {% if creature.is_legendary %}
+                        <span class="type-badge" style="color: #F8D030; background: rgba(248, 208, 48, 0.15);">★ Legendary</span>
+                        {% endif %}
+                        {% if creature.is_mythical %}
+                        <span class="type-badge" style="color: #bc8cff; background: rgba(188, 140, 255, 0.15);">✦ Mythical</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            <div class="creature-price-display mt-2">${{ creature.current_price|floatformat:2 }}</div>
+            <div class="creature-change {% if change > 0 %}positive{% elif change < 0 %}negative{% else %}neutral{% endif %}">
+                {% if change > 0 %}▲ +{% elif change < 0 %}▼ {% endif %}${{ change|floatformat:2 }}
+                ({% if change_pct > 0 %}+{% endif %}{{ change_pct|floatformat:2 }}%)
+            </div>
+        </div>
+    </div>
+
+    <div class="container py-4">
+        {% if messages %}
+        {% for message in messages %}
+        <div class="alert alert-{% if message.tags == 'error' %}danger{% else %}{{ message.tags }}{% endif %} alert-dismissible fade show" role="alert"
+             style="background: var(--bg-card); border-color: var(--border-color); color: var(--text-primary);">
+            {{ message }}
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="alert"></button>
+        </div>
+        {% endfor %}
+        {% endif %}
+
+        <div class="row g-4">
+            <!-- Left column: Chart + Stats + Trades -->
+            <div class="col-lg-8">
+                <!-- Price Chart -->
+                <div class="card-dark mb-4">
+                    <h3>Price History</h3>
+                    <div class="interval-tabs">
+                        <button class="interval-tab active" data-interval="1H">1H</button>
+                        <button class="interval-tab" data-interval="1D">1D</button>
+                        <button class="interval-tab" data-interval="1W">1W</button>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="priceChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Base Stats -->
+                <div class="card-dark mb-4">
+                    <h3>Base Stats</h3>
+                    <div class="stat-grid">
+                        <div class="stat-item">
+                            <div class="label">HP</div>
+                            <div class="value">{{ creature.hp }}</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="label">Attack</div>
+                            <div class="value">{{ creature.attack }}</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="label">Defense</div>
+                            <div class="value">{{ creature.defense }}</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="label">Sp. Atk</div>
+                            <div class="value">{{ creature.special_attack }}</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="label">Sp. Def</div>
+                            <div class="value">{{ creature.special_defense }}</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="label">Speed</div>
+                            <div class="value">{{ creature.speed }}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Trades -->
+                <div class="card-dark">
+                    <h3>Recent Trades</h3>
+                    {% for trade in recent_trades %}
+                    <div class="trade-row">
+                        <span style="color: var(--text-secondary);">
+                            {{ trade.executed_at|date:"M d, H:i" }}
+                        </span>
+                        <span>×{{ trade.quantity|floatformat:2 }}</span>
+                        <span class="fw-bold">${{ trade.price_per_unit|floatformat:2 }}</span>
+                    </div>
+                    {% empty %}
+                    <p style="color: var(--text-secondary); text-align: center; padding: 1rem;">
+                        No trades yet for this creature.
+                    </p>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Right column: Buy/Sell + Holdings + Orders -->
+            <div class="col-lg-4">
+                <!-- Holdings -->
+                {% if portfolio_entry %}
+                <div class="card-dark holdings-card mb-4">
+                    <h3>Your Holdings</h3>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span style="color: var(--text-secondary);">Quantity</span>
+                        <span class="fw-bold">{{ portfolio_entry.quantity|floatformat:4 }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span style="color: var(--text-secondary);">Avg Cost</span>
+                        <span>${{ portfolio_entry.average_cost|floatformat:2 }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span style="color: var(--text-secondary);">Current Value</span>
+                        <span class="fw-bold">${{ portfolio_entry.current_value|floatformat:2 }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span style="color: var(--text-secondary);">P&L</span>
+                        <span class="fw-bold {% if portfolio_entry.unrealized_pnl >= 0 %}positive{% else %}negative{% endif %}">
+                            {% if portfolio_entry.unrealized_pnl >= 0 %}+{% endif %}${{ portfolio_entry.unrealized_pnl|floatformat:2 }}
+                            ({{ portfolio_entry.unrealized_pnl_pct|floatformat:2 }}%)
+                        </span>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Buy/Sell Forms -->
+                <div class="card-dark mb-4">
+                    <h3>Trade</h3>
+
+                    <!-- Market Order Section -->
+                    <div class="order-form mb-3">
+                        <div class="order-tabs" id="marketOrderTabs">
+                            <button class="order-tab active-buy" id="tabBuy" onclick="switchOrderTab('buy')">Buy</button>
+                            <button class="order-tab" id="tabSell" onclick="switchOrderTab('sell')">Sell</button>
+                        </div>
+
+                        <!-- Buy Form -->
+                        <form method="POST" action="{% url 'trading:place_order' %}" id="buyForm">
+                            {% csrf_token %}
+                            <input type="hidden" name="execution_type" value="MARKET">
+                            <input type="hidden" name="creature" value="{{ creature.pk }}">
+                            <input type="hidden" name="order_type" value="BUY">
+                            <label style="font-size:0.8rem; color: var(--text-secondary); margin-bottom:0.3rem; display:block;">Quantity</label>
+                            <input type="number" name="quantity" class="form-input mb-2" step="0.01" min="0.01" placeholder="0.00" id="buyQty" oninput="updateCostSummary('buy')">
+                            <div class="cost-summary" id="buyCostSummary">
+                                <div class="row-item">
+                                    <span>Price</span>
+                                    <span>${{ creature.current_price|floatformat:2 }}</span>
+                                </div>
+                                <div class="row-item">
+                                    <span>Subtotal</span>
+                                    <span id="buySubtotal">$0.00</span>
+                                </div>
+                                <div class="row-item">
+                                    <span>Commission (1.5%)</span>
+                                    <span id="buyCommission">$0.00</span>
+                                </div>
+                                <div class="row-item total">
+                                    <span>Total Cost</span>
+                                    <span id="buyTotal">$0.00</span>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn-buy mt-3">Buy {{ creature.name }}</button>
+                        </form>
+
+                        <!-- Sell Form -->
+                        <form method="POST" action="{% url 'trading:place_order' %}" id="sellForm" style="display:none;">
+                            {% csrf_token %}
+                            <input type="hidden" name="execution_type" value="MARKET">
+                            <input type="hidden" name="creature" value="{{ creature.pk }}">
+                            <input type="hidden" name="order_type" value="SELL">
+                            <label style="font-size:0.8rem; color: var(--text-secondary); margin-bottom:0.3rem; display:block;">
+                                Quantity
+                                {% if portfolio_entry %}
+                                <span style="float:right;">Available: {{ portfolio_entry.quantity|floatformat:4 }}</span>
+                                {% endif %}
+                            </label>
+                            <input type="number" name="quantity" class="form-input mb-2" step="0.01" min="0.01" placeholder="0.00" id="sellQty" oninput="updateCostSummary('sell')">
+                            <div class="cost-summary" id="sellCostSummary">
+                                <div class="row-item">
+                                    <span>Price</span>
+                                    <span>${{ creature.current_price|floatformat:2 }}</span>
+                                </div>
+                                <div class="row-item">
+                                    <span>Subtotal</span>
+                                    <span id="sellSubtotal">$0.00</span>
+                                </div>
+                                <div class="row-item">
+                                    <span>Commission (1.5%)</span>
+                                    <span id="sellCommission">$0.00</span>
+                                </div>
+                                <div class="row-item total">
+                                    <span>Net Proceeds</span>
+                                    <span id="sellTotal">$0.00</span>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn-sell mt-3">Sell {{ creature.name }}</button>
+                        </form>
+                    </div>
+
+                    <!-- Limit Order Section -->
+                    <div class="order-form">
+                        <p style="font-size:0.8rem; color: var(--text-secondary); margin-bottom:0.75rem;">
+                            <i class="bi bi-clock-history me-1"></i>Limit Order
+                        </p>
+                        <form method="POST" action="{% url 'trading:place_order' %}">
+                            {% csrf_token %}
+                            <input type="hidden" name="execution_type" value="LIMIT">
+                            <input type="hidden" name="creature" value="{{ creature.pk }}">
+                            <div class="mb-2">
+                                <label style="font-size:0.75rem; color: var(--text-secondary);">Type</label>
+                                <select name="order_type" class="form-input" style="padding:0.5rem;">
+                                    <option value="BUY">Buy Limit</option>
+                                    <option value="SELL">Sell Limit</option>
+                                </select>
+                            </div>
+                            <div class="mb-2">
+                                <label style="font-size:0.75rem; color: var(--text-secondary);">Quantity</label>
+                                <input type="number" name="quantity" class="form-input" step="0.01" min="0.01" placeholder="0.00">
+                            </div>
+                            <div class="mb-2">
+                                <label style="font-size:0.75rem; color: var(--text-secondary);">Trigger Price</label>
+                                <input type="number" name="limit_price" class="form-input" step="0.01" min="0.01" placeholder="0.00">
+                            </div>
+                            <button type="submit" class="btn-buy" style="background: var(--accent-blue);">
+                                Place Limit Order
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Open Orders -->
+                {% if user_orders %}
+                <div class="card-dark">
+                    <h3>Your Open Orders</h3>
+                    {% for order in user_orders %}
+                    <div class="order-row">
+                        <div>
+                            <span class="{% if order.order_type == 'BUY' %}positive{% else %}negative{% endif %} fw-bold"
+                                  style="font-size:0.8rem;">
+                                {{ order.get_order_type_display }}
+                            </span>
+                            <span style="color: var(--text-secondary); font-size:0.8rem;">
+                                ×{{ order.quantity|floatformat:2 }} @ ${{ order.limit_price|floatformat:2 }}
+                            </span>
+                        </div>
+                        <form method="POST" action="{% url 'trading:cancel_order' order_id=order.pk %}" style="display:inline;">
+                            {% csrf_token %}
+                            <button type="submit" class="btn-cancel-order">Cancel</button>
+                        </form>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+const PRICE = {{ creature.current_price }};
+const COMMISSION_RATE = 0.015;
+
+function switchOrderTab(tab) {
+    document.getElementById('buyForm').style.display = tab === 'buy' ? 'block' : 'none';
+    document.getElementById('sellForm').style.display = tab === 'sell' ? 'block' : 'none';
+    document.getElementById('tabBuy').className = 'order-tab' + (tab === 'buy' ? ' active-buy' : '');
+    document.getElementById('tabSell').className = 'order-tab' + (tab === 'sell' ? ' active-sell' : '');
+}
+
+function updateCostSummary(type) {
+    const qty = parseFloat(document.getElementById(type + 'Qty').value) || 0;
+    const subtotal = qty * PRICE;
+    const commission = subtotal * COMMISSION_RATE;
+
+    document.getElementById(type + 'Subtotal').textContent = '$' + subtotal.toFixed(2);
+    document.getElementById(type + 'Commission').textContent = '$' + commission.toFixed(2);
+
+    if (type === 'buy') {
+        document.getElementById('buyTotal').textContent = '$' + (subtotal + commission).toFixed(2);
+    } else {
+        document.getElementById('sellTotal').textContent = '$' + (subtotal - commission).toFixed(2);
+    }
+}
+
+// Price Chart
+let priceChart = null;
+const creatureId = '{{ creature.pk }}';
+
+function loadChart(interval) {
+    fetch(`/trading/api/price-history/${creatureId}/?interval=${interval}`)
+        .then(r => r.json())
+        .then(data => {
+            const labels = data.data.map(d => {
+                const dt = new Date(d.timestamp);
+                return interval === '1H' ? dt.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
+                     : dt.toLocaleDateString([], {month:'short', day:'numeric'});
+            });
+            const prices = data.data.map(d => d.close);
+
+            if (priceChart) priceChart.destroy();
+
+            const ctx = document.getElementById('priceChart').getContext('2d');
+            const gradient = ctx.createLinearGradient(0, 0, 0, 300);
+            gradient.addColorStop(0, 'rgba(88, 166, 255, 0.2)');
+            gradient.addColorStop(1, 'rgba(88, 166, 255, 0.0)');
+
+            priceChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Price',
+                        data: prices,
+                        borderColor: '#58a6ff',
+                        backgroundColor: gradient,
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 0,
+                        borderWidth: 2,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: '#1c2128',
+                            borderColor: '#30363d',
+                            borderWidth: 1,
+                            titleColor: '#e6edf3',
+                            bodyColor: '#e6edf3',
+                            callbacks: {
+                                label: (ctx) => `$${ctx.parsed.y.toFixed(2)}`
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { color: 'rgba(48, 54, 61, 0.5)' },
+                            ticks: { color: '#8b949e', maxTicksLimit: 8 }
+                        },
+                        y: {
+                            grid: { color: 'rgba(48, 54, 61, 0.5)' },
+                            ticks: {
+                                color: '#8b949e',
+                                callback: (val) => '$' + val.toFixed(0)
+                            }
+                        }
+                    },
+                    interaction: { intersect: false, mode: 'index' }
+                }
+            });
+        })
+        .catch(() => {
+            // No data available; show placeholder
+            const ctx = document.getElementById('priceChart').getContext('2d');
+            ctx.fillStyle = '#8b949e';
+            ctx.font = '14px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('No price history data available yet', ctx.canvas.width / 2, ctx.canvas.height / 2);
+        });
+}
+
+// Interval tabs
+document.querySelectorAll('.interval-tab').forEach(tab => {
+    tab.addEventListener('click', function() {
+        document.querySelectorAll('.interval-tab').forEach(t => t.classList.remove('active'));
+        this.classList.add('active');
+        loadChart(this.dataset.interval);
+    });
+});
+
+loadChart('1H');
+</script>
+{% endblock %}
