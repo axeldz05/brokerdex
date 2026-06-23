@@ -162,4 +162,20 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'creature.tasks.matchmake_random_battle',
         'schedule': crontab(minute='*/5'),
     },
+    'actualizar-precios-cada-minuto': {
+        'task': 'trading.tasks.update_creature_prices',
+        'schedule': crontab(minute='*/1'),
+    },
+    'verificar-ordenes-limite-cada-30s': {
+        'task': 'trading.tasks.check_pending_limit_orders',
+        'schedule': 30.0,
+    },
+    'snapshot-precios-horario': {
+        'task': 'trading.tasks.record_hourly_price_snapshots',
+        'schedule': crontab(minute=0),
+    },
+    'snapshot-precios-diario': {
+        'task': 'trading.tasks.record_daily_price_snapshots',
+        'schedule': crontab(hour=0, minute=0),
+    },
 }
