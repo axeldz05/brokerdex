@@ -1,0 +1,269 @@
+{% extends "layout.html" %}
+{% load humanize %}
+
+{% block content %}
+<style>
+    :root {
+        --bg-primary: #0d1117;
+        --bg-secondary: #161b22;
+        --bg-card: #1c2128;
+        --border-color: #30363d;
+        --text-primary: #e6edf3;
+        --text-secondary: #8b949e;
+        --accent-green: #3fb950;
+        --accent-red: #f85149;
+        --accent-blue: #58a6ff;
+        --accent-purple: #bc8cff;
+        --accent-yellow: #d29922;
+    }
+
+    .orders-page {
+        background: var(--bg-primary);
+        min-height: 100vh;
+        color: var(--text-primary);
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    .orders-header {
+        background: linear-gradient(135deg, var(--bg-secondary), var(--bg-card));
+        border-bottom: 1px solid var(--border-color);
+        padding: 2rem 0;
+    }
+    .orders-header h1 {
+        font-size: 1.75rem;
+        font-weight: 700;
+        background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+
+    .nav-links {
+        display: flex;
+        gap: 1rem;
+    }
+    .nav-links a {
+        color: var(--text-secondary);
+        text-decoration: none;
+        font-size: 0.875rem;
+        padding: 0.5rem 1rem;
+        border-radius: 8px;
+        transition: all 0.2s;
+    }
+    .nav-links a:hover, .nav-links a.active {
+        color: var(--accent-blue);
+        background: rgba(88, 166, 255, 0.08);
+    }
+
+    .filter-tabs {
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 1.5rem;
+        flex-wrap: wrap;
+    }
+    .filter-tab {
+        padding: 0.4rem 0.9rem;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: 500;
+        color: var(--text-secondary);
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        text-decoration: none;
+        transition: all 0.2s;
+    }
+    .filter-tab:hover, .filter-tab.active {
+        color: var(--accent-blue);
+        border-color: var(--accent-blue);
+        background: rgba(88, 166, 255, 0.08);
+    }
+
+    .card-dark {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        overflow: hidden;
+    }
+
+    .orders-table {
+        width: 100%;
+        color: var(--text-primary);
+        margin: 0;
+    }
+    .orders-table thead th {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--text-secondary);
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid var(--border-color);
+        font-weight: 600;
+        background: var(--bg-secondary);
+    }
+    .orders-table tbody tr {
+        border-bottom: 1px solid var(--border-color);
+        transition: background 0.15s;
+    }
+    .orders-table tbody tr:hover {
+        background: rgba(88, 166, 255, 0.04);
+    }
+    .orders-table tbody tr:last-child {
+        border-bottom: none;
+    }
+    .orders-table td {
+        padding: 0.875rem 1rem;
+        font-size: 0.875rem;
+        vertical-align: middle;
+    }
+
+    .order-type-buy { color: var(--accent-green); font-weight: 600; }
+    .order-type-sell { color: var(--accent-red); font-weight: 600; }
+
+    .status-badge {
+        display: inline-block;
+        padding: 0.2rem 0.55rem;
+        border-radius: 6px;
+        font-size: 0.7rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+    .status-open {
+        background: rgba(88, 166, 255, 0.12);
+        color: var(--accent-blue);
+    }
+    .status-filled {
+        background: rgba(63, 185, 80, 0.12);
+        color: var(--accent-green);
+    }
+    .status-cancelled {
+        background: rgba(139, 148, 158, 0.12);
+        color: var(--text-secondary);
+    }
+    .status-partially_filled {
+        background: rgba(210, 153, 34, 0.12);
+        color: var(--accent-yellow);
+    }
+
+    .btn-cancel {
+        background: rgba(248, 81, 73, 0.1);
+        color: var(--accent-red);
+        border: 1px solid rgba(248, 81, 73, 0.3);
+        border-radius: 6px;
+        padding: 0.3rem 0.7rem;
+        font-size: 0.75rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .btn-cancel:hover {
+        background: rgba(248, 81, 73, 0.2);
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 4rem 2rem;
+        color: var(--text-secondary);
+    }
+
+    @media (max-width: 768px) {
+        .hide-mobile { display: none; }
+    }
+</style>
+
+<div class="orders-page">
+    <div class="orders-header">
+        <div class="container">
+            <h1 class="mb-1">Order History</h1>
+            <div class="nav-links">
+                <a href="{% url 'trading:market' %}">Market</a>
+                <a href="{% url 'trading:portfolio' %}">Portfolio</a>
+                <a href="{% url 'trading:orders' %}" class="active">Orders</a>
+                <a href="{% url 'dashboard:dashboard' %}">Dashboard</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="container py-4">
+        <!-- Filters -->
+        <div class="filter-tabs">
+            <a href="{% url 'trading:orders' %}"
+               class="filter-tab {% if not current_filter %}active{% endif %}">All</a>
+            {% for value, label in status_choices %}
+            <a href="{% url 'trading:orders' %}?status={{ value }}"
+               class="filter-tab {% if current_filter == value %}active{% endif %}">
+                {{ label }}
+            </a>
+            {% endfor %}
+        </div>
+
+        <!-- Orders Table -->
+        <div class="card-dark">
+            {% if orders %}
+            <div class="table-responsive">
+                <table class="orders-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Creature</th>
+                            <th>Side</th>
+                            <th>Type</th>
+                            <th class="text-end">Qty</th>
+                            <th class="text-end hide-mobile">Filled</th>
+                            <th class="text-end hide-mobile">Limit Price</th>
+                            <th>Status</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for order in orders %}
+                        <tr>
+                            <td style="color: var(--text-secondary);">
+                                {{ order.created_at|date:"M d, H:i" }}
+                            </td>
+                            <td class="fw-bold">{{ order.creature.name }}</td>
+                            <td>
+                                <span class="{% if order.order_type == 'BUY' %}order-type-buy{% else %}order-type-sell{% endif %}">
+                                    {{ order.get_order_type_display }}
+                                </span>
+                            </td>
+                            <td style="color: var(--text-secondary);">
+                                {{ order.get_execution_type_display }}
+                            </td>
+                            <td class="text-end">{{ order.quantity|floatformat:4 }}</td>
+                            <td class="text-end hide-mobile">{{ order.filled_quantity|floatformat:4 }}</td>
+                            <td class="text-end hide-mobile">
+                                {% if order.limit_price %}
+                                ${{ order.limit_price|floatformat:2 }}
+                                {% else %}
+                                —
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="status-badge status-{{ order.status|lower }}">
+                                    {{ order.get_status_display }}
+                                </span>
+                            </td>
+                            <td>
+                                {% if order.status == 'OPEN' or order.status == 'PARTIALLY_FILLED' %}
+                                <form method="POST" action="{% url 'trading:cancel_order' order_id=order.pk %}" style="display:inline;">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn-cancel">Cancel</button>
+                                </form>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <i class="bi bi-receipt d-block" style="font-size:3rem; opacity:0.5;"></i>
+                <p class="mt-2">No orders found{% if current_filter %} with status "{{ current_filter }}"{% endif %}.</p>
+                <a href="{% url 'trading:market' %}" style="color: var(--accent-blue);">Place your first order →</a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

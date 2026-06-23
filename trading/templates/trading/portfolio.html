@@ -1,0 +1,369 @@
+{% extends "layout.html" %}
+{% load humanize %}
+{% load trading_tags %}
+
+{% block content %}
+<style>
+    :root {
+        --bg-primary: #0d1117;
+        --bg-secondary: #161b22;
+        --bg-card: #1c2128;
+        --border-color: #30363d;
+        --text-primary: #e6edf3;
+        --text-secondary: #8b949e;
+        --accent-green: #3fb950;
+        --accent-red: #f85149;
+        --accent-blue: #58a6ff;
+        --accent-purple: #bc8cff;
+    }
+
+    .portfolio-page {
+        background: var(--bg-primary);
+        min-height: 100vh;
+        color: var(--text-primary);
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    .portfolio-header {
+        background: linear-gradient(135deg, var(--bg-secondary), var(--bg-card));
+        border-bottom: 1px solid var(--border-color);
+        padding: 2rem 0;
+    }
+
+    .portfolio-header h1 {
+        font-size: 1.75rem;
+        font-weight: 700;
+        background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+
+    .nav-links {
+        display: flex;
+        gap: 1rem;
+    }
+    .nav-links a {
+        color: var(--text-secondary);
+        text-decoration: none;
+        font-size: 0.875rem;
+        padding: 0.5rem 1rem;
+        border-radius: 8px;
+        transition: all 0.2s;
+    }
+    .nav-links a:hover, .nav-links a.active {
+        color: var(--accent-blue);
+        background: rgba(88, 166, 255, 0.08);
+    }
+
+    .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1rem;
+        margin-bottom: 2rem;
+    }
+    .summary-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 1.25rem;
+    }
+    .summary-card .label {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--text-secondary);
+    }
+    .summary-card .value {
+        font-size: 1.5rem;
+        font-weight: 700;
+        margin-top: 0.25rem;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .positive { color: var(--accent-green); }
+    .negative { color: var(--accent-red); }
+
+    .card-dark {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 1.5rem;
+    }
+    .card-dark h3 {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin-bottom: 1rem;
+    }
+
+    .portfolio-table {
+        width: 100%;
+        color: var(--text-primary);
+    }
+    .portfolio-table thead th {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--text-secondary);
+        padding: 0.5rem 0.75rem;
+        border-bottom: 1px solid var(--border-color);
+        font-weight: 600;
+    }
+    .portfolio-table tbody tr {
+        border-bottom: 1px solid var(--border-color);
+        transition: background 0.15s;
+        cursor: pointer;
+    }
+    .portfolio-table tbody tr:hover {
+        background: rgba(88, 166, 255, 0.04);
+    }
+    .portfolio-table tbody tr:last-child {
+        border-bottom: none;
+    }
+    .portfolio-table td {
+        padding: 0.875rem 0.75rem;
+        font-size: 0.9rem;
+        vertical-align: middle;
+    }
+
+    .creature-cell {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .creature-cell img {
+        width: 24px;
+        height: 24px;
+        object-fit: contain;
+        border-radius: 4px;
+    }
+
+    .type-badge {
+        display: inline-block;
+        padding: 0.15rem 0.45rem;
+        border-radius: 4px;
+        font-size: 0.65rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .donut-container {
+        position: relative;
+        height: 250px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 4rem 2rem;
+        color: var(--text-secondary);
+    }
+
+    @media (max-width: 768px) {
+        .summary-grid { grid-template-columns: repeat(2, 1fr); }
+        .hide-mobile { display: none; }
+    }
+</style>
+
+<div class="portfolio-page">
+    <div class="portfolio-header">
+        <div class="container">
+            <h1 class="mb-1">Portfolio</h1>
+            <div class="nav-links">
+                <a href="{% url 'trading:market' %}">Market</a>
+                <a href="{% url 'trading:portfolio' %}" class="active">Portfolio</a>
+                <a href="{% url 'trading:orders' %}">Orders</a>
+                <a href="{% url 'dashboard:dashboard' %}">Dashboard</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="container py-4">
+        <!-- Summary Cards -->
+        <div class="summary-grid">
+            <div class="summary-card">
+                <div class="label">Total Value</div>
+                <div class="value">${{ total_value|floatformat:2 }}</div>
+            </div>
+            <div class="summary-card">
+                <div class="label">Total Cost</div>
+                <div class="value">${{ total_cost|floatformat:2 }}</div>
+            </div>
+            <div class="summary-card">
+                <div class="label">Total P&L</div>
+                <div class="value {% if total_pnl >= 0 %}positive{% else %}negative{% endif %}">
+                    {% if total_pnl >= 0 %}+{% endif %}${{ total_pnl|floatformat:2 }}
+                </div>
+            </div>
+            <div class="summary-card">
+                <div class="label">Return %</div>
+                <div class="value {% if total_pnl_pct >= 0 %}positive{% else %}negative{% endif %}">
+                    {% if total_pnl_pct >= 0 %}+{% endif %}{{ total_pnl_pct|floatformat:2 }}%
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-4">
+            <!-- Holdings Table -->
+            <div class="col-lg-8">
+                <div class="card-dark">
+                    <h3>Holdings</h3>
+                    {% if entries %}
+                    <div class="table-responsive">
+                        <table class="portfolio-table">
+                            <thead>
+                                <tr>
+                                    <th>Creature</th>
+                                    <th>Type</th>
+                                    <th class="text-end">Qty</th>
+                                    <th class="text-end hide-mobile">Avg Cost</th>
+                                    <th class="text-end">Value</th>
+                                    <th class="text-end">P&L</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for entry in entries %}
+                                <tr onclick="window.location='{% url 'trading:creature_detail' creature_id=entry.creature.pk %}'">
+                                    <td>
+                                        <div class="creature-cell">
+                                            {% if entry.creature.small_icon_url %}
+                                            <img src="{{ entry.creature.small_icon_url }}" alt="{{ entry.creature.name }}">
+                                            {% endif %}
+                                            <span class="fw-bold">{{ entry.creature.name }}</span>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span class="type-badge"
+                                              style="color: {{ entry.creature.type|type_color }}; background: {{ entry.creature.type|type_bg }};">
+                                            {{ entry.creature.type }}
+                                        </span>
+                                    </td>
+                                    <td class="text-end">{{ entry.quantity|floatformat:4 }}</td>
+                                    <td class="text-end hide-mobile">${{ entry.average_cost|floatformat:2 }}</td>
+                                    <td class="text-end fw-bold">${{ entry.current_value|floatformat:2 }}</td>
+                                    <td class="text-end">
+                                        <span class="{% if entry.unrealized_pnl >= 0 %}positive{% else %}negative{% endif %} fw-bold">
+                                            {% if entry.unrealized_pnl >= 0 %}+{% endif %}${{ entry.unrealized_pnl|floatformat:2 }}
+                                        </span>
+                                        <br>
+                                        <span style="font-size:0.75rem; color: var(--text-secondary);">
+                                            {% if entry.unrealized_pnl_pct >= 0 %}+{% endif %}{{ entry.unrealized_pnl_pct|floatformat:2 }}%
+                                        </span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="empty-state">
+                        <i class="bi bi-briefcase d-block" style="font-size:3rem; opacity:0.5;"></i>
+                        <p class="mt-2">Your portfolio is empty.</p>
+                        <a href="{% url 'trading:market' %}" style="color: var(--accent-blue);">Browse the market →</a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Distribution Chart -->
+            <div class="col-lg-4">
+                <div class="card-dark">
+                    <h3>Distribution by Type</h3>
+                    {% if entries %}
+                    <div class="donut-container">
+                        <canvas id="distributionChart"></canvas>
+                    </div>
+                    {% else %}
+                    <div class="empty-state" style="padding: 2rem;">
+                        <p>No data to display.</p>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- Account Balance -->
+                <div class="card-dark mt-4">
+                    <h3>Cash Balance</h3>
+                    <div class="value" style="font-size:1.5rem; font-weight:700;">
+                        ${{ user.balance_dollars|floatformat:2 }}
+                    </div>
+                    <p style="color:var(--text-secondary); font-size:0.8rem; margin-top:0.5rem;">
+                        Available for trading
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% if entries %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+const typeData = {
+    {% for type_name, value in type_distribution.items %}
+    '{{ type_name }}': {{ value|floatformat:2 }},
+    {% endfor %}
+};
+
+const TYPE_COLORS = {
+    'fire': '#F08030', 'water': '#6890F0', 'grass': '#78C850',
+    'electric': '#F8D030', 'psychic': '#F85888', 'fighting': '#C03028',
+    'dark': '#705848', 'steel': '#B8B8D0', 'dragon': '#7038F8',
+    'fairy': '#EE99AC', 'normal': '#A8A878', 'flying': '#A890F0',
+    'ground': '#E0C068', 'rock': '#B8A038', 'bug': '#A8B820',
+    'ghost': '#705898', 'ice': '#98D8D8', 'poison': '#A040A0',
+};
+
+const labels = Object.keys(typeData);
+const values = Object.values(typeData);
+const colors = labels.map(l => TYPE_COLORS[l] || '#A8A878');
+
+new Chart(document.getElementById('distributionChart'), {
+    type: 'doughnut',
+    data: {
+        labels: labels.map(l => l.charAt(0).toUpperCase() + l.slice(1)),
+        datasets: [{
+            data: values,
+            backgroundColor: colors,
+            borderColor: '#1c2128',
+            borderWidth: 2,
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '65%',
+        plugins: {
+            legend: {
+                position: 'bottom',
+                labels: {
+                    color: '#8b949e',
+                    font: { size: 11 },
+                    padding: 12,
+                    usePointStyle: true,
+                    pointStyleWidth: 10,
+                }
+            },
+            tooltip: {
+                backgroundColor: '#1c2128',
+                borderColor: '#30363d',
+                borderWidth: 1,
+                titleColor: '#e6edf3',
+                bodyColor: '#e6edf3',
+                callbacks: {
+                    label: (ctx) => `$${ctx.parsed.toFixed(2)}`
+                }
+            }
+        }
+    }
+});
+</script>
+{% endif %}
+{% endblock %}
