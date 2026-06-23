@@ -65,6 +65,22 @@
                     <span class="navbar-toggler-icon"></span>
                 </button>
                 <div class="collapse navbar-collapse" id="navbarContent">
+                    {% if user.is_authenticated %}
+                    <ul class="navbar-nav me-auto">
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'dashboard:dashboard' %}">Dashboard</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'trading:market' %}">Market</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'trading:portfolio' %}">Portfolio</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{% url 'trading:orders' %}">Orders</a>
+                        </li>
+                    </ul>
+                    {% endif %}
                     <ul class="navbar-nav ms-auto">
                         {% if not user.is_authenticated %}
                         <li class="nav-item">
