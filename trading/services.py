@@ -3,7 +3,7 @@ from decimal import Decimal
 from django.db import transaction
 from django.core.exceptions import ValidationError
 from django.utils import timezone
-from django.db.models import Sum, Q, Count, Avg
+from django.db.models import Sum, Q, Count, Avg, Max, Min
 
 from .models import Order, Trade, Portfolio, PriceHistory
 from creature.models import Creature, Battle
@@ -159,8 +159,8 @@ class PricingEngine:
 
         # Get actual high/low from trade prices in this period
         price_agg = period_trades.aggregate(
-            high=models.Max('price_per_unit'),
-            low=models.Min('price_per_unit')
+            high=Max('price_per_unit'),
+            low=Min('price_per_unit')
         )
 
         # Use open from previous snapshot or current price
