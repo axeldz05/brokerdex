@@ -5,78 +5,209 @@
 {% block content %}
 
 <div class="container my-5">
-    <!-- User Balance -->
-    <div class="card">
-        <div class="card-body">
-            <h5 class="card-title">Current Balance</h5>
-            <h2 class="display-4">${{ user.balance_dollars | intcomma}}</h2>
-        </div>
-    </div>
-    <!-- Quick Actions -->
-    <div class="card">
-        <div class="card-body text-center">
-            <h5 class="card-title">Quick Actions</h5>
-            <div class="action-btns">
-                <a href="{% url 'banking:transfer' %}" class="btn btn-primary">Transfer</a>
-                <a href="{% url 'banking:invest' %}" class="btn btn-success">Invest</a>
-                <a href="{% url 'banking:withdraw' %}" class="btn btn-warning">Withdraw</a>
-                <a href="{% url 'banking:deposit' %}" class="btn btn-info text-white">Deposit</a>
-            </div>
-        </div>
-    </div>
-
-    <!-- Investments Graph -->
-    <div class="card">
-        <div class="card-body">
-            <h5 class="card-title">Investments & Stocks</h5>
-            <div class="chart-container" style="position: relative; height:300px;">
-                <canvas id="investmentChart"></canvas>
-            </div>
-        </div>
-    </div>
-
-    <!-- Income and Expense Summary -->
-    <div class="card">
-        <div class="card-body">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <h5 class="card-title mb-0">Income & Expenses</h5>
-                <div class="btn-group" role="group" aria-label="Time Period Toggle">
-                    <button type="button" class="btn btn-outline-secondary active" id="monthlyBtn">Month</button>
-                    <button type="button" class="btn btn-outline-secondary" id="yearlyBtn">Year</button>
+    <div class="row g-4">
+        <!-- Main Column -->
+        <div class="col-lg-8">
+            <!-- User Balance & Actions -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title text-muted">Current Balance</h5>
+                    <h1 class="display-5 fw-bold mb-3">${{ user.balance_dollars | intcomma }}</h1>
+                    <div class="d-flex flex-wrap gap-2">
+                        <a href="{% url 'banking:transfer' %}" class="btn btn-primary">
+                            <i class="bi bi-arrow-left-right me-1"></i> Transfer
+                        </a>
+                        <a href="{% url 'trading:market' %}" class="btn btn-success">
+                            <i class="bi bi-graph-up-arrow me-1"></i> Invest
+                        </a>
+                        <a href="{% url 'banking:withdraw' %}" class="btn btn-warning">
+                            <i class="bi bi-box-arrow-up me-1"></i> Withdraw
+                        </a>
+                        <a href="{% url 'banking:deposit' %}" class="btn btn-info text-white">
+                            <i class="bi bi-box-arrow-down me-1"></i> Deposit
+                        </a>
+                    </div>
                 </div>
             </div>
-            <!-- Navigation for previous/next periods -->
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <button type="button" class="btn btn-light">&laquo; Previous</button>
-                <span id="periodLabel">August 2023</span>
-                <button type="button" class="btn btn-light">Next &raquo;</button>
+
+            <!-- Investments Graph -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">Investments & Stocks</h5>
+                    {% if portfolio_entries %}
+                    <div class="row align-items-center">
+                        <div class="col-md-6 mb-3 mb-md-0">
+                            <div class="chart-container" style="position: relative; height:250px;">
+                                <canvas id="investmentChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="text-muted">Portfolio Summary</h6>
+                            <p class="mb-1"><strong>Total Assets Value:</strong> ${{ total_value|floatformat:2 }}</p>
+                            <p class="mb-1"><strong>Total Cost Basis:</strong> ${{ total_cost|floatformat:2 }}</p>
+                            <p class="mb-0"><strong>Unrealized P&L:</strong> 
+                                <span class="{% if total_pnl >= 0 %}text-success{% else %}text-danger{% endif %} fw-bold">
+                                    {% if total_pnl >= 0 %}+{% endif %}${{ total_pnl|floatformat:2 }}
+                                    ({% if total_pnl_pct >= 0 %}+{% endif %}{{ total_pnl_pct|floatformat:2 }}%)
+                                </span>
+                            </p>
+                            <div class="mt-3">
+                                <a href="{% url 'trading:portfolio' %}" class="btn btn-outline-primary btn-sm">View Full Portfolio</a>
+                            </div>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-5 text-muted">
+                        <i class="bi bi-briefcase display-4 d-block mb-3 opacity-50"></i>
+                        <p>Your portfolio is currently empty. Start investing in Pokémon!</p>
+                        <a href="{% url 'trading:market' %}" class="btn btn-success btn-sm">Go to Market</a>
+                    </div>
+                    {% endif %}
+                </div>
             </div>
-            <!-- Income & Expense Data -->
-            <div>
-                <p><strong>Income:</strong> $5,000.00</p>
-                <p><strong>Expenses:</strong> $3,200.00</p>
+
+            <!-- Transaction History -->
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title mb-4">Transaction History</h5>
+                    <div class="list-group list-group-flush">
+                        {% for t in transactions %}
+                        <div class="list-group-item bg-transparent border-color d-flex justify-content-between align-items-center px-0 py-3 text-white">
+                            <div>
+                                <small class="text-muted d-block">{{ t.date }}</small>
+                                {% if t.sender == request.user.account %}
+                                <span>Sent to <strong class="text-secondary">{{ t.receiver }}</strong></span>
+                                {% else %}
+                                <span>Received from <strong class="text-secondary">{{ t.sender }}</strong></span>
+                                {% endif %}
+                            </div>
+                            <span class="fw-bold {% if t.sender == request.user.account %}text-danger{% else %}text-success{% endif %}">
+                                {% if t.sender == request.user.account %}-{% else %}+{% endif %}${{ t.amount }}
+                            </span>
+                        </div>
+                        {% empty %}
+                        <div class="text-center py-4 text-muted">
+                            <i class="bi bi-journal-text display-4 d-block mb-2 opacity-50"></i>
+                            <span>There are no transactions yet.</span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sidebar / Details Column -->
+        <div class="col-lg-4">
+            <!-- Market Stats Summary -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h5 class="card-title mb-3">Market Activity</h5>
+                    <p class="text-muted small">Quick shortcut links to major pages</p>
+                    <div class="d-grid gap-2">
+                        <a href="{% url 'trading:market' %}" class="btn btn-outline-secondary text-start">
+                            <i class="bi bi-shop me-2 text-primary"></i> Browse Market
+                        </a>
+                        <a href="{% url 'trading:portfolio' %}" class="btn btn-outline-secondary text-start">
+                            <i class="bi bi-wallet2 me-2 text-success"></i> My Portfolio
+                        </a>
+                        <a href="{% url 'trading:orders' %}" class="btn btn-outline-secondary text-start">
+                            <i class="bi bi-clock-history me-2 text-warning"></i> Order History
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Income and Expense Summary -->
+            <div class="card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="card-title mb-0">Income & Expenses</h5>
+                        <div class="btn-group btn-group-sm" role="group" aria-label="Time Period Toggle">
+                            <button type="button" class="btn btn-outline-secondary active" id="monthlyBtn">Month</button>
+                            <button type="button" class="btn btn-outline-secondary" id="yearlyBtn">Year</button>
+                        </div>
+                    </div>
+                    <!-- Navigation for periods -->
+                    <div class="d-flex justify-content-between align-items-center mb-3 small">
+                        <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none">&laquo; Previous</button>
+                        <span id="periodLabel" class="fw-bold">Current Period</span>
+                        <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none">Next &raquo;</button>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center py-2 border-bottom border-secondary">
+                        <span class="text-muted">Income:</span>
+                        <span class="text-success fw-bold">$5,000.00</span>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center py-2">
+                        <span class="text-muted">Expenses:</span>
+                        <span class="text-danger fw-bold">$3,200.00</span>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
-    <div class="card">
-        <div class="card-body">
-            <h5 class="card-title mb-0">Transaction History</h5>
-            {% for t in transactions %}
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <span>{{ t.date }}</span>
-
-                {% if t.sender == request.user.account %}
-                <span class="red"> - ${{ t.amount }} (Sent to {{ t.receiver }})</span>
-                {% else %}
-                <span class="green"> + ${{ t.amount }} (Received from {{ t.sender }})</span>
-                {% endif %}
-            </div>
-            {% empty %}
-                <span class="gray">There are no transactions yet.</span>
-            {% endfor %}
-        </div>
-    </div>
-
 </div>
+{% endblock %}
 
+{% block extra_js %}
+{% if portfolio_entries %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+const typeData = {
+    {% for type_name, value in type_distribution.items %}
+    '{{ type_name }}': {{ value|floatformat:2 }},
+    {% endfor %}
+};
+
+const TYPE_COLORS = {
+    'fire': '#F08030', 'water': '#6890F0', 'grass': '#78C850',
+    'electric': '#F8D030', 'psychic': '#F85888', 'fighting': '#C03028',
+    'dark': '#705848', 'steel': '#B8B8D0', 'dragon': '#7038F8',
+    'fairy': '#EE99AC', 'normal': '#A8A878', 'flying': '#A890F0',
+    'ground': '#E0C068', 'rock': '#B8A038', 'bug': '#A8B820',
+    'ghost': '#705898', 'ice': '#98D8D8', 'poison': '#A040A0',
+};
+
+const labels = Object.keys(typeData);
+const values = Object.values(typeData);
+const colors = labels.map(l => TYPE_COLORS[l] || '#A8A878');
+
+new Chart(document.getElementById('investmentChart'), {
+    type: 'pie',
+    data: {
+        labels: labels.map(l => l.charAt(0).toUpperCase() + l.slice(1)),
+        datasets: [{
+            data: values,
+            backgroundColor: colors,
+            borderColor: '#1c2128',
+            borderWidth: 2,
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                position: 'right',
+                labels: {
+                    color: '#8b949e',
+                    font: { size: 11 },
+                    usePointStyle: true,
+                    pointStyleWidth: 10,
+                }
+            },
+            tooltip: {
+                backgroundColor: '#1c2128',
+                borderColor: '#30363d',
+                borderWidth: 1,
+                titleColor: '#e6edf3',
+                bodyColor: '#e6edf3',
+                callbacks: {
+                    label: (ctx) => `$${ctx.parsed.toFixed(2)}`
+                }
+            }
+        }
+    }
+});
+</script>
+{% endif %}
 {% endblock %}
