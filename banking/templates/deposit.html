@@ -6,10 +6,10 @@
     <div class="row justify-content-center">
         <div class="col-md-6 col-lg-5">
             
-            <div class="card shadow-sm border-0">
-                <div class="card-header bg-primary text-white text-center py-3">
+            <div class="card shadow-sm">
+                <div class="card-header text-center py-3">
                     <h5 class="mb-0 card-title">Deposit Funds</h5>
-                    <small>Transfer to the following data</small>
+                    <small class="text-muted">Transfer to the following data</small>
                 </div>
 
                 <div class="card-body p-4">
@@ -17,11 +17,11 @@
                     <div class="row mb-4">
                         <div class="col-6">
                             <label class="text-muted small fw-bold text-uppercase">Bank</label>
-                            <p class="fs-5 mb-0 text-dark">Banco Nación</p>
+                            <p class="fs-5 mb-0 text-white">Banco Nación</p>
                         </div>
                         <div class="col-6">
                             <label class="text-muted small fw-bold text-uppercase">Account holder</label>
-                            <p class="fs-5 mb-0 text-dark">BrokerDex S.A.</p>
+                            <p class="fs-5 mb-0 text-white">BrokerDex S.A.</p>
                         </div>
                     </div>
 
@@ -30,7 +30,7 @@
                     <div class="mb-3">
                         <label for="cvu-input" class="form-label text-muted small fw-bold text-uppercase">CVU</label>
                         <div class="input-group">
-                            <input type="text" class="form-control font-monospace bg-light" 
+                            <input type="text" class="form-control font-monospace" 
                                    value="0000003100000000000000" 
                                    id="cvu-input" readonly>
                             <button class="btn btn-outline-primary" type="button" onclick="copyToClipboard('cvu-input', this)">
@@ -42,7 +42,7 @@
                     <div class="mb-3">
                         <label for="alias-input" class="form-label text-muted small fw-bold text-uppercase">Alias</label>
                         <div class="input-group">
-                            <input type="text" class="form-control font-monospace bg-light" 
+                            <input type="text" class="form-control font-monospace" 
                                    value="broker.dex.wallet" 
                                    id="alias-input" readonly>
                             <button class="btn btn-outline-primary" type="button" onclick="copyToClipboard('alias-input', this)">
@@ -51,7 +51,7 @@
                         </div>
                     </div>
 
-                    <div class="alert alert-info d-flex align-items-center mt-4" role="alert">
+                    <div class="alert alert-info bg-transparent border-info text-info d-flex align-items-center mt-4" role="alert">
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" class="bi bi-info-circle flex-shrink-0 me-2" viewBox="0 0 16 16">
                             <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
                             <path d="m8.93 6.588-2.29.287-.082.38.45.083c.294.07.352.176.288.469l-.738 3.468c-.194.897.105 1.319.808 1.319.545 0 1.178-.252 1.465-.598l.088-.416c-.2.176-.492.246-.686.246-.275 0-.375-.193-.304-.533L8.93 6.588zM9 4.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/>
