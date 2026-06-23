@@ -60,5 +60,15 @@ def process_battle_turn(battle_id):
         process_battle_turn.apply_async(args=[battle.id], countdown=10)
         return f"Turn {battle.current_turn - 1} processed. Next turn is queued."
     else:
-        winner_name = battle.winner.creature.name if battle.winner else "Draw"
+        # Trigger price updates for both participants after battle ends
+        from trading.tasks import update_price_after_battle
+        winner_participant = battle.winner
+        for p in participants:
+            won = (winner_participant and p.pk == winner_participant.pk)
+            update_price_after_battle.apply_async(
+                args=[str(p.creature_id), won],
+                countdown=2
+            )
+
+        winner_name = winner_participant.creature.name if winner_participant else "Draw"
         return f"Battle {battle.id} has finished! Winner: {winner_name}"
