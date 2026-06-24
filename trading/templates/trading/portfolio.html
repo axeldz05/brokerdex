@@ -750,7 +750,12 @@ function selectCreature(row) {
 document.querySelectorAll('.portfolio-table tbody tr').forEach(row => {
     row.addEventListener('click', function(e) {
         if (e.target.closest('form') || e.target.closest('button')) return;
-        selectCreature(this);
+        if (this.classList.contains('selected')) {
+            this.classList.remove('selected');
+            document.getElementById('detailPanel').classList.remove('show');
+        } else {
+            selectCreature(this);
+        }
     });
 });
 </script>
