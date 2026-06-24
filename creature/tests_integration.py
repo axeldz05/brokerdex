@@ -10,6 +10,7 @@ from django.utils import timezone
 from account.models import Account
 from .models import Creature, Ability, EggTemplate, Incubation, Battle, BattleInvestment
 from .services import IncubationService, TrainingService, BattleService
+from .tasks import matchmake_random_battle, process_battle_turn
 from trading.models import Portfolio, Notification
 
 
@@ -445,3 +446,73 @@ class BattleServiceIntegrationTests(TestCase):
 
         historical = BattleService.get_historical_battles()
         self.assertIn(battle, historical)
+
+
+class BattleTaskIntegrationTests(TestCase):
+    """Integration tests for Celery battle tasks."""
+
+    def setUp(self):
+        self.ability = Ability.objects.create(
+            name='Tackle', ability_type='normal',
+            damage_class='physical', power=40,
+        )
+        self.creature_1 = Creature.objects.create(
+            name='Charmander', type='fire',
+            current_price=Decimal('100.00'), hp=39,
+            attack=52, defense=43,
+            battle_cooldown=timedelta(hours=1),
+            cooldown_expires_at=timezone.now() - timedelta(hours=1),
+            description='A fire lizard.',
+        )
+        self.creature_1.abilities.add(self.ability)
+        self.creature_2 = Creature.objects.create(
+            name='Squirtle', type='water',
+            current_price=Decimal('100.00'), hp=44,
+            attack=48, defense=65,
+            battle_cooldown=timedelta(hours=1),
+            cooldown_expires_at=timezone.now() - timedelta(hours=1),
+            description='A water turtle.',
+        )
+        self.creature_2.abilities.add(self.ability)
+
+    @patch('creature.tasks.process_battle_turn.apply_async')
+    def test_matchmake_random_battle_starts_battle(self, mock_async):
+        result = matchmake_random_battle()
+        self.assertIn('initialized', result)
+        self.assertTrue(Battle.objects.filter(status='active').exists())
+
+    @patch('creature.tasks.process_battle_turn.apply_async')
+    def test_matchmake_random_battle_not_enough(self, mock_async):
+        self.creature_1.currently_in_battle = True
+        self.creature_1.save()
+        self.creature_2.currently_in_battle = True
+        self.creature_2.save()
+        result = matchmake_random_battle()
+        self.assertIn('Not enough', result)
+
+    @patch('creature.tasks.process_battle_turn.apply_async')
+    def test_process_battle_turn_active(self, mock_async):
+        battle = BattleService.start_battle(self.creature_1, self.creature_2)
+        from django.conf import settings
+        turn_interval = getattr(settings, 'BATTLE_TURN_INTERVAL', 180)
+
+        with self.settings(CELERY_TASK_ALWAYS_EAGER=False):
+            result = process_battle_turn(battle.id)
+
+        self.assertIn('Next turn', result)
+        mock_async.assert_called_once()
+        args, kwargs = mock_async.call_args
+        self.assertEqual(kwargs['countdown'], turn_interval)
+
+    @patch('creature.tasks.process_battle_turn.apply_async')
+    def test_process_battle_turn_finishes_battle(self, mock_async):
+        battle = BattleService.start_battle(self.creature_1, self.creature_2)
+        p1 = battle.participants.get(creature=self.creature_1)
+        p2 = battle.participants.get(creature=self.creature_2)
+
+        battle.record_action(
+            actor_participant=p1, target_participant=p2,
+            ability=self.ability, damage=50
+        )
+        battle.refresh_from_db()
+        self.assertEqual(battle.status, 'finished')
