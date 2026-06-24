@@ -1,13 +1,14 @@
 from celery import shared_task
 from django.utils import timezone
+from django.conf import settings
+from datetime import timedelta
 from .models import Creature, Battle, Incubation
-from .services import IncubationService, TrainingService
+from .services import IncubationService, TrainingService, BattleService
 import random
 
 @shared_task
 def matchmake_random_battle():
     now = timezone.now()
-    # order_by('?') orders by random
     available_creatures = Creature.objects.filter(
         currently_in_battle=False,
         cooldown_expires_at__lte=now
@@ -15,10 +16,11 @@ def matchmake_random_battle():
 
     if available_creatures.count() == 2:
         c1, c2 = available_creatures
-        battle = Battle.objects.start_battle(c1, c2)
-        process_battle_turn.apply_async(args=[battle.id], countdown=5)
+        battle = BattleService.start_battle(c1, c2)
+        turn_interval = getattr(settings, 'BATTLE_TURN_INTERVAL', 180)
+        process_battle_turn.apply_async(args=[battle.id], countdown=turn_interval)
         return f"Battle {battle.id} initialized: {c1.name} vs {c2.name}"
-        
+
     return "Not enough creatures to start a battle."
 
 @shared_task
@@ -32,21 +34,24 @@ def process_battle_turn(battle_id):
     if len(participants) != 2:
         return "Error: invalid amount of participants"
 
+    # Record investments from the previous turn before processing this one
+    previous_turn = battle.current_turn - 1
+    if previous_turn >= 1:
+        BattleService.record_turn_investments(battle, previous_turn)
+
     # Uneven = participant 1 attacks, Even = participant 2 attacks)
     if battle.current_turn % 2 != 0:
         attacker, defender = participants[0], participants[1]
     else:
         attacker, defender = participants[1], participants[0]
-    
-    # TODO: each creature should select its next ability instead of random
-    # this assumes that the ability is an attack targeted to the other participant
+
     abilities = list(attacker.creature.abilities.all())
     if not abilities:
         return f"The creature {attacker.creature.name} has no abilities"
     ability = random.choice(abilities)
-    power = ability.power if ability.power else 10 
+    power = ability.power if ability.power else 10
     raw_damage = (power * attacker.creature.attack) / defender.creature.defense
-    damage = max(1, int(raw_damage)) 
+    damage = max(1, int(raw_damage))
 
     battle.record_action(
         actor_participant=attacker,
@@ -56,22 +61,20 @@ def process_battle_turn(battle_id):
     )
 
     battle.refresh_from_db()
-    
-    if battle.status == 'active':
-        process_battle_turn.apply_async(args=[battle.id], countdown=10)
-        return f"Turn {battle.current_turn - 1} processed. Next turn is queued."
-    else:
-        # Trigger price updates for both participants after battle ends
-        from trading.tasks import update_price_after_battle
-        winner_participant = battle.winner
-        for p in participants:
-            won = (winner_participant and p.pk == winner_participant.pk)
-            update_price_after_battle.apply_async(
-                args=[str(p.creature_id), won],
-                countdown=2
-            )
 
-        winner_name = winner_participant.creature.name if winner_participant else "Draw"
+    if battle.status == 'active':
+        turn_interval = getattr(settings, 'BATTLE_TURN_INTERVAL', 180)
+        battle.next_turn_at = timezone.now() + timedelta(seconds=turn_interval)
+        battle.save(update_fields=['next_turn_at'])
+        process_battle_turn.apply_async(args=[battle.id], countdown=turn_interval)
+        return f"Turn {battle.current_turn - 1} processed. Next turn in {turn_interval}s."
+    else:
+        # Record investments for the final turn
+        BattleService.record_turn_investments(battle, battle.current_turn)
+        # Process ELO and price changes
+        BattleService.process_battle_result(battle)
+
+        winner_name = battle.winner.creature.name if battle.winner else "Draw"
         return f"Battle {battle.id} has finished! Winner: {winner_name}"
 
 
