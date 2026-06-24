@@ -376,8 +376,109 @@
                     </div>
                 </div>
 
-                <!-- Recent Trades -->
-                <div class="card-dark">
+                <!-- Abilities -->
+                <div class="card-dark mb-4">
+                    <h3>Abilities</h3>
+                    {% for ability in creature.abilities.all %}
+                    <div class="ability-card mb-3" style="background: var(--bg-secondary); border-radius: 10px; padding: 1rem; border: 1px solid var(--border-color);">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <div>
+                                <span class="fw-bold" style="font-size: 1rem;">{{ ability.name }}</span>
+                                <span class="type-badge ms-2"
+                                      style="color: {{ ability.ability_type|type_color }}; background: {{ ability.ability_type|type_bg }};">
+                                    {{ ability.get_ability_type_display }}
+                                </span>
+                            </div>
+                            <span class="badge" style="background: var(--bg-card); color: var(--text-secondary); font-size: 0.75rem;">
+                                {{ ability.get_damage_class_display }}
+                            </span>
+                        </div>
+                        {% if ability.description %}
+                        <p class="mb-2" style="font-size: 0.85rem; color: var(--text-secondary);">{{ ability.description }}</p>
+                        {% endif %}
+                        <div class="d-flex flex-wrap gap-3" style="font-size: 0.8rem;">
+                            {% if ability.power %}
+                            <div>
+                                <span style="color: var(--text-secondary);">Power:</span>
+                                <span class="fw-bold">{{ ability.power }}</span>
+                            </div>
+                            {% endif %}
+                            <div>
+                                <span style="color: var(--text-secondary);">Accuracy:</span>
+                                <span class="fw-bold">{{ ability.accuracy }}%</span>
+                            </div>
+                            <div>
+                                <span style="color: var(--text-secondary);">PP:</span>
+                                <span class="fw-bold">{{ ability.pp }}</span>
+                            </div>
+                            <div>
+                                <span style="color: var(--text-secondary);">Priority:</span>
+                                <span class="fw-bold">{{ ability.priority }}</span>
+                            </div>
+                            <div>
+                                <span style="color: var(--text-secondary);">Target:</span>
+                                <span class="fw-bold">{{ ability.get_target_display }}</span>
+                            </div>
+                            {% if ability.is_healing_move %}
+                            <div>
+                                <span class="text-success fw-bold"><i class='bx bx-plus-medical'></i> Healing: {{ ability.healing_percentage }}%</span>
+                            </div>
+                            {% endif %}
+                            {% if ability.chance_to_inflict_status > 0 %}
+                            <div>
+                                <span style="color: var(--text-secondary);">Status chance:</span>
+                                <span class="fw-bold text-warning">{{ ability.chance_to_inflict_status }}%</span>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% empty %}
+                    <p style="color: var(--text-secondary); text-align: center; padding: 1rem;">
+                        No abilities assigned to this creature.
+                    </p>
+                    {% endfor %}
+                </div>
+
+                <!-- Battle History -->
+                <div class="card-dark mb-4">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h3 class="mb-0">Battle History</h3>
+                        <a href="{% url 'creature:creature_battle_history' creature.id %}" class="btn btn-sm btn-outline-primary">
+                            <i class='bx bx-list-ul'></i> Full History
+                        </a>
+                    </div>
+                    {% if top_battles %}
+                        {% for battle in top_battles %}
+                        <a href="{% url 'creature:battle_detail' battle.id %}" class="text-decoration-none" style="color: inherit;">
+                        <div class="d-flex justify-content-between align-items-center py-2" style="border-bottom: 1px solid var(--border-color); font-size: 0.85rem;">
+                            <div class="d-flex align-items-center gap-2">
+                                {% with p_list=battle.participants.all %}
+                                    <span>{{ p_list.0.creature.name }}</span>
+                                    <span class="fw-bold" style="color: var(--accent-red);">vs</span>
+                                    <span>{{ p_list.1.creature.name }}</span>
+                                {% endwith %}
+                            </div>
+                            <div class="text-end">
+                                <span class="badge bg-secondary me-1">Turn {{ battle.current_turn }}</span>
+                                {% if battle.winner %}
+                                    {% if battle.winner.creature_id == creature.id %}
+                                    <span class="text-success small">W</span>
+                                    {% else %}
+                                    <span class="text-danger small">L</span>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="text-muted small">Draw</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        </a>
+                        {% endfor %}
+                    {% else %}
+                        <p style="color: var(--text-secondary); text-align: center; padding: 1rem;">
+                            No battles yet. Battles happen automatically every few minutes.
+                        </p>
+                    {% endif %}
+                </div>
                     <h3>Recent Trades</h3>
                     {% for trade in recent_trades %}
                     <div class="trade-row">
