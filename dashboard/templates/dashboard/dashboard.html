@@ -72,7 +72,7 @@
                     <h5 class="card-title mb-4">Transaction History</h5>
                     <div class="list-group list-group-flush">
                         {% for t in transactions %}
-                        <div class="list-group-item bg-transparent border-color d-flex justify-content-between align-items-center px-0 py-3 text-white">
+                        <div class="list-group-item d-flex justify-content-between align-items-center px-0 py-3" style="background:transparent;border-color:var(--border-color);color:var(--text-primary);">
                             <div>
                                 <small class="text-muted d-block">{{ t.date }}</small>
                                 {% if t.sender == request.user.account %}
@@ -122,25 +122,43 @@
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <h5 class="card-title mb-0">Income & Expenses</h5>
-                        <div class="btn-group btn-group-sm" role="group" aria-label="Time Period Toggle">
-                            <button type="button" class="btn btn-outline-secondary active" id="monthlyBtn">Month</button>
-                            <button type="button" class="btn btn-outline-secondary" id="yearlyBtn">Year</button>
+                        <div class="btn-group btn-group-sm" role="group">
+                            <a href="?period=monthly" class="btn btn-outline-secondary {% if period == 'monthly' %}active{% endif %}">Month</a>
+                            <a href="?period=yearly" class="btn btn-outline-secondary {% if period == 'yearly' %}active{% endif %}">Year</a>
                         </div>
                     </div>
-                    <!-- Navigation for periods -->
-                    <div class="d-flex justify-content-between align-items-center mb-3 small">
-                        <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none">&laquo; Previous</button>
-                        <span id="periodLabel" class="fw-bold">Current Period</span>
-                        <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none">Next &raquo;</button>
+
+                    {% if income_data %}
+                    <div style="max-height:260px; overflow-y:auto;">
+                    {% for item in income_data %}
+                    <div class="d-flex justify-content-between align-items-center py-2 border-bottom" style="border-color:var(--border-color)!important;">
+                        <small style="color:var(--text-secondary);">{{ item.period }}</small>
+                        <div class="text-end">
+                            <span class="text-success fw-bold" style="font-size:0.85rem;">
+                                {% if item.total >= 0 %}+{% endif %}${{ item.total|floatformat:0 }}
+                            </span>
+                            <br>
+                            <small style="color:var(--text-secondary); font-size:0.7rem;">
+                                Sales ${{ item.sales|floatformat:0 }}
+                                {% if item.deposits > 0 %} · Deposits ${{ item.deposits|floatformat:0 }}{% endif %}
+                                {% if item.transfers_in > 0 %} · In ${{ item.transfers_in|floatformat:0 }}{% endif %}
+                            </small>
+                        </div>
                     </div>
-                    <div class="d-flex justify-content-between align-items-center py-2 border-bottom border-secondary">
-                        <span class="text-muted">Income:</span>
-                        <span class="text-success fw-bold">$5,000.00</span>
+                    {% endfor %}
                     </div>
-                    <div class="d-flex justify-content-between align-items-center py-2">
-                        <span class="text-muted">Expenses:</span>
-                        <span class="text-danger fw-bold">$3,200.00</span>
+                    <div class="d-flex justify-content-between align-items-center pt-3 mt-2 border-top" style="border-color:var(--border-color)!important;">
+                        <span class="fw-bold">Net Flow</span>
+                        <span class="fw-bold {% if net_flow >= 0 %}text-success{% else %}text-danger{% endif %}">
+                            {% if net_flow >= 0 %}+{% endif %}${{ net_flow|floatformat:2 }}
+                        </span>
                     </div>
+                    {% else %}
+                    <div class="text-center py-4 text-muted">
+                        <i class="bi bi-graph-up display-4 d-block mb-2 opacity-50"></i>
+                        <span>No income or expense data yet.</span>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
         </div>
