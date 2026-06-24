@@ -69,6 +69,10 @@ class Creature(models.Model):
     
     is_legendary = models.BooleanField(default=False)
     is_mythical = models.BooleanField(default=False)
+    circuit_breaker_expires_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="If set, trading is frozen until this time (volatility halt)"
+    )
     
     # battle related fields
     battle_cooldown = models.DurationField(default=datetime.timedelta(days=0,hours=3))
@@ -141,6 +145,13 @@ class Creature(models.Model):
         if self.cooldown_expires_at > timezone.now():
             return False
         return True
+
+    @property
+    def is_trading_halted(self):
+        if self.circuit_breaker_expires_at is None:
+            return False
+        from django.utils import timezone
+        return timezone.now() < self.circuit_breaker_expires_at
 
     def end_battle(self):
         from django.utils import timezone

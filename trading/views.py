@@ -8,7 +8,7 @@ from django.contrib import messages
 
 from creature.models import Creature
 from .forms import MarketOrderForm, LimitOrderForm
-from .models import Order, Trade, Portfolio, PriceHistory, MarketIndex
+from .models import Order, Trade, Portfolio, PriceHistory, MarketIndex, Notification
 from .services import TradingEngine
 from creature.services import TrainingService
 
@@ -331,3 +331,37 @@ def market_indices_api(request):
     } for idx in latest]
 
     return JsonResponse({'indices': data})
+
+
+@login_required
+def notifications_view(request):
+    """Show user notifications with mark-as-read."""
+    if request.method == 'POST':
+        notification_id = request.POST.get('notification_id')
+        if notification_id:
+            Notification.objects.filter(
+                pk=notification_id, user=request.user
+            ).update(is_read=True)
+        return redirect('trading:notifications')
+
+    unread_count = Notification.objects.filter(
+        user=request.user, is_read=False
+    ).count()
+
+    notifications = Notification.objects.filter(
+        user=request.user
+    ).select_related('related_creature')[:50]
+
+    return render(request, 'trading/notifications.html', {
+        'notifications': notifications,
+        'unread_count': unread_count,
+    })
+
+
+@login_required
+def notifications_api(request):
+    """JSON API for unread notifications count."""
+    count = Notification.objects.filter(
+        user=request.user, is_read=False
+    ).count()
+    return JsonResponse({'unread_count': count})

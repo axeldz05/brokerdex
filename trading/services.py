@@ -5,7 +5,7 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 from django.db.models import Sum, Q, Count, Avg, Max, Min
 
-from .models import Order, Trade, Portfolio, PriceHistory, MarketIndex
+from .models import Order, Trade, Portfolio, PriceHistory, MarketIndex, Notification
 from creature.models import Creature, Battle
 
 
@@ -114,10 +114,12 @@ class PricingEngine:
     @classmethod
     def update_creature_price(cls, creature):
         """Recalculate and persist the new price for a creature."""
+        old_price = creature.current_price
+        creature.previous_close = old_price
         new_price = cls.calculate_price(creature)
-        creature.previous_close = creature.current_price
         creature.current_price = new_price
         creature.save(update_fields=['current_price', 'previous_close'])
+        VolatilityService.check_volatility(creature)
         return new_price
 
     @classmethod
@@ -197,11 +199,21 @@ class TradingEngine:
     COMMISSION_RATE = Trade.COMMISSION_RATE  # 1.5%
 
     @classmethod
+    def _check_trading_halted(cls, creature):
+        """Raise ValidationError if trading is halted for this creature."""
+        if creature.is_trading_halted:
+            raise ValidationError(
+                f"Trading for {creature.name} is temporarily halted due "
+                f"to extreme volatility. Please try again later."
+            )
+
+    @classmethod
     def execute_market_buy(cls, account, creature, quantity):
         """
         Execute an immediate market buy order.
         Deducts balance, creates Portfolio entry, records Trade.
         """
+        cls._check_trading_halted(creature)
         quantity = Decimal(str(quantity))
         price = creature.current_price
         subtotal = quantity * price
@@ -273,6 +285,7 @@ class TradingEngine:
         Execute an immediate market sell order.
         Credits balance, reduces Portfolio, records Trade.
         """
+        cls._check_trading_halted(creature)
         quantity = Decimal(str(quantity))
         price = creature.current_price
         subtotal = quantity * price
@@ -635,3 +648,79 @@ class MarketIndicesService:
             creature_count=count,
         )
         return index
+
+
+class VolatilityService:
+    """
+    Monitors price changes and triggers circuit breakers + notifications
+    when a creature's price moves more than 10% in a short period.
+    """
+
+    VOLATILITY_THRESHOLD = Decimal('10.0')
+    CIRCUIT_BREAKER_DURATION = 15  # minutes
+
+    @classmethod
+    def check_volatility(cls, creature):
+        """
+        Check if the creature's price change exceeds the volatility threshold.
+        If so, trigger a circuit breaker and notify all portfolio holders.
+        """
+        if creature.previous_close == 0:
+            return
+
+        change_pct = (
+            (creature.current_price - creature.previous_close)
+            / creature.previous_close * 100
+        ).quantize(Decimal('0.01'))
+
+        if abs(change_pct) >= cls.VOLATILITY_THRESHOLD:
+            if not creature.is_trading_halted:
+                cls._trigger_circuit_breaker(creature, change_pct)
+            cls._notify_holders(creature, change_pct)
+
+    @classmethod
+    def _trigger_circuit_breaker(cls, creature, change_pct):
+        """Freeze trading for the creature."""
+        from django.utils import timezone
+        creature.circuit_breaker_expires_at = (
+            timezone.now() + timezone.timedelta(minutes=cls.CIRCUIT_BREAKER_DURATION)
+        )
+        creature.save(update_fields=['circuit_breaker_expires_at'])
+
+    @classmethod
+    def _notify_holders(cls, creature, change_pct):
+        """Notify all users who hold this creature in their portfolio."""
+        holders = Portfolio.objects.filter(
+            creature=creature,
+            quantity__gt=0,
+        ).select_related('owner')
+
+        direction = "surged" if change_pct > 0 else "plummeted"
+        emoji = "📈" if change_pct > 0 else "📉"
+
+        notifications = []
+        for entry in holders:
+            notifications.append(Notification(
+                user=entry.owner,
+                notification_type=Notification.Type.VOLATILITY_ALERT,
+                title=f"{emoji} {creature.name} {direction} {abs(change_pct)}%",
+                message=(
+                    f"{creature.name} price moved {abs(change_pct)}% in minutes. "
+                    f"Trading has been halted for {cls.CIRCUIT_BREAKER_DURATION} minutes. "
+                    f"Current price: ${creature.current_price}."
+                ),
+                related_creature=creature,
+            ))
+
+        Notification.objects.bulk_create(notifications)
+
+    @classmethod
+    def check_all_creatures(cls):
+        """Check volatility for all creatures."""
+        from creature.models import Creature
+        creatures = Creature.objects.all()
+        alerts = 0
+        for creature in creatures:
+            cls.check_volatility(creature)
+            alerts += 1
+        return alerts

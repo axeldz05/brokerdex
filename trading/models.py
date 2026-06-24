@@ -318,3 +318,39 @@ class MarketIndex(models.Model):
         if self.previous_value == 0:
             return Decimal('0')
         return ((self.value - self.previous_value) / self.previous_value * 100).quantize(Decimal('0.01'))
+
+
+class Notification(models.Model):
+    """
+    User-facing notifications for volatility alerts, battle results, etc.
+    Designed for polling-based consumption (and future WebSocket support).
+    """
+
+    class Type(models.TextChoices):
+        VOLATILITY_ALERT = 'VOLATILITY', 'Volatility Alert'
+        BATTLE_RESULT = 'BATTLE', 'Battle Result'
+        INCUBATION_COMPLETE = 'INCUBATION', 'Incubation Complete'
+        TRAINING_COMPLETE = 'TRAINING', 'Training Complete'
+        SYSTEM = 'SYSTEM', 'System Message'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        Account, on_delete=models.CASCADE, related_name='notifications'
+    )
+    notification_type = models.CharField(max_length=20, choices=Type.choices)
+    title = models.CharField(max_length=255)
+    message = models.TextField()
+    related_creature = models.ForeignKey(
+        Creature, on_delete=models.SET_NULL, null=True, blank=True
+    )
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', 'is_read']),
+        ]
+
+    def __str__(self):
+        return f"[{self.notification_type}] {self.title} — {self.user.username}"
