@@ -6,7 +6,7 @@ from django.urls import reverse
 from django.core.exceptions import ValidationError
 
 from account.models import Account
-from creature.models import Creature, Ability
+from creature.models import Creature, Ability, Battle, Incubation, EggTemplate
 from .models import Portfolio, Order, Trade, PriceHistory, MarketIndex, Notification
 from .services import TradingEngine, PricingEngine, MarketIndicesService, VolatilityService
 
@@ -471,3 +471,51 @@ class VolatilityAlertIntegrationTests(TestCase):
         response = self.client.get(reverse('trading:notifications_api'))
         data = response.json()
         self.assertEqual(data['unread_count'], 1)
+
+
+class SeedAllIntegrationTests(TestCase):
+    """Integration tests for the seed_all management command."""
+
+    def test_seed_all_creates_data(self):
+        from django.core.management import call_command
+
+        call_command('seed_all', '--clear')
+
+        self.assertGreater(Ability.objects.count(), 0)
+        self.assertGreater(Creature.objects.count(), 0)
+        self.assertGreater(EggTemplate.objects.count(), 0)
+
+    def test_seed_all_with_demo(self):
+        from django.core.management import call_command
+
+        call_command('seed_all', '--clear', '--demo')
+
+        self.assertGreater(Account.objects.exclude(
+            username='market_maker'
+        ).count(), 0)
+        self.assertGreater(Order.objects.count(), 0)
+        self.assertGreater(Battle.objects.count(), 0)
+        self.assertGreater(Incubation.objects.count(), 0)
+
+    def test_seed_all_idempotent(self):
+        from django.core.management import call_command
+
+        call_command('seed_all')
+        ability_count = Ability.objects.count()
+        creature_count = Creature.objects.count()
+
+        call_command('seed_all')
+
+        self.assertEqual(Ability.objects.count(), ability_count)
+        self.assertEqual(Creature.objects.count(), creature_count)
+
+    def test_seed_all_clear_then_reseed(self):
+        from django.core.management import call_command
+
+        call_command('seed_all', '--clear')
+        count_after_first = Creature.objects.count()
+
+        call_command('seed_all', '--clear')
+        count_after_second = Creature.objects.count()
+
+        self.assertEqual(count_after_first, count_after_second)
