@@ -210,6 +210,29 @@ def portfolio_view(request):
             'training_cost': TrainingService.get_training_cost(entry.creature),
         })
 
+    # Realized P&L: sum of all sell trades (net proceeds - cost basis)
+    sell_trades = Trade.objects.filter(
+        seller=request.user
+    ).select_related('creature')
+    realized_pnl = Decimal('0')
+    for t in sell_trades:
+        net_proceeds = t.total_amount - t.commission
+        realized_pnl += net_proceeds
+
+    portfolio_cost = sum(
+        p.average_cost * p.quantity for p in entries
+    )
+    realized_cost = portfolio_cost  # simplified: total cost basis of portfolio
+    realized_pnl_total = realized_pnl - portfolio_cost
+
+    # Total return (realized + unrealized)
+    total_invested = total_cost
+    total_return = total_pnl + realized_pnl_total
+    total_return_pct = (
+        (total_return / total_invested * 100).quantize(Decimal('0.01'))
+        if total_invested > 0 else Decimal('0')
+    )
+
     return render(request, 'trading/portfolio.html', {
         'entry_list': entry_list,
         'entries': entries,
@@ -217,6 +240,10 @@ def portfolio_view(request):
         'total_cost': total_cost,
         'total_pnl': total_pnl,
         'total_pnl_pct': total_pnl_pct,
+        'realized_pnl': realized_pnl_total,
+        'realized_pnl_pct': (realized_pnl_total / total_invested * 100).quantize(Decimal('0.01')) if total_invested > 0 else Decimal('0'),
+        'total_return': total_return,
+        'total_return_pct': total_return_pct,
         'type_distribution': type_distribution,
     })
 
