@@ -527,7 +527,6 @@
             </div>
         </div>
 
-        {% if entries %}
         <div class="row mt-4">
             <div class="col-12">
                 <div class="card-dark">
@@ -568,14 +567,13 @@
                 </div>
             </div>
         </div>
-        {% endif %}
     </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
-{% if entries %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+{% if entries %}
 <script>
 const typeData = {
     {% for type_name, value in type_distribution.items %}
@@ -755,7 +753,10 @@ document.querySelectorAll('.portfolio-table tbody tr').forEach(row => {
         selectCreature(this);
     });
 });
+</script>
+{% endif %}
 
+<script>
 // --- Income & Expenses Chart ---
 let ieChart = null;
 const incomeRaw = JSON.parse('{{ income_data_json|safe }}');
@@ -878,5 +879,4 @@ function refreshSummary() {
 
 refreshTimer = setInterval(refreshSummary, 15000);
 </script>
-{% endif %}
 {% endblock %}
