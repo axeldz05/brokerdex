@@ -78,6 +78,9 @@ class Creature(models.Model):
     battle_cooldown = models.DurationField(default=datetime.timedelta(days=0,hours=3))
     cooldown_expires_at = models.DateTimeField(default=timezone.now)
     currently_in_battle = models.BooleanField(default=False)
+    elo_rating = models.IntegerField(default=1000, help_text="Internal ELO rating for battle valuation — never exposed to users")
+    wins = models.IntegerField(default=0)
+    losses = models.IntegerField(default=0)
     small_icon = models.ImageField(
         upload_to=creature_image_upload_path,
         blank=True,
@@ -281,9 +284,23 @@ class Battle(models.Model):
     current_turn = models.PositiveIntegerField(default=1)
     winner = models.ForeignKey('BattleParticipant', null=True, blank=True, on_delete=models.SET_NULL, related_name='won_battles')
     
-    battle_log = models.JSONField(default=list, blank=True) 
+    battle_log = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    creature_1_elo_before = models.IntegerField(default=1000, help_text="ELO snapshot — backend only, never exposed")
+    creature_2_elo_before = models.IntegerField(default=1000, help_text="ELO snapshot — backend only, never exposed")
+    creature_1_elo_after = models.IntegerField(null=True, blank=True)
+    creature_2_elo_after = models.IntegerField(null=True, blank=True)
+    creature_1_potential_change = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        help_text="Pre-computed potential price change % if creature_1 wins"
+    )
+    creature_2_potential_change = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        help_text="Pre-computed potential price change % if creature_2 wins"
+    )
+    next_turn_at = models.DateTimeField(default=timezone.now, help_text="When the next turn will be processed")
 
     objects = BattleManager()
     
@@ -432,6 +449,26 @@ class Incubation(models.Model):
             return 0
         remaining = self.hatches_at - timezone.now()
         return max(remaining.total_seconds(), 0)
+
+
+class BattleInvestment(models.Model):
+    """
+    Tracks how many people invested (bought Portfolio) in each creature
+    during specific turns of a battle. Populated by Celery task during
+    battle processing.
+    """
+    battle = models.ForeignKey(Battle, on_delete=models.CASCADE, related_name='investments')
+    turn_number = models.PositiveIntegerField()
+    creature = models.ForeignKey(Creature, on_delete=models.CASCADE)
+    investor_count = models.PositiveIntegerField(default=0)
+    total_amount = models.DecimalField(max_digits=18, decimal_places=8, default=0)
+
+    class Meta:
+        unique_together = ['battle', 'turn_number', 'creature']
+        ordering = ['turn_number']
+
+    def __str__(self):
+        return f"Battle {self.battle_id} Turn {self.turn_number}: {self.investor_count} invested in {self.creature.name}"
 
 
 @receiver(m2m_changed, sender=Creature.abilities.through)
