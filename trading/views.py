@@ -15,7 +15,7 @@ from banking.models import Transfer
 from .forms import MarketOrderForm, LimitOrderForm
 from .models import Order, Trade, Portfolio, PriceHistory, MarketIndex, Notification
 from .services import TradingEngine
-from creature.services import TrainingService
+from creature.services import TrainingService, BattleService
 
 
 @login_required
@@ -94,6 +94,9 @@ def creature_detail_view(request, creature_id):
         'creature': creature.pk,
     })
 
+    # Top battles for this creature (by recency, for battle history section)
+    top_battles = BattleService.get_creature_battle_history(creature)[:5]
+
     return render(request, 'trading/creature_detail.html', {
         'creature': creature,
         'change': change,
@@ -104,6 +107,7 @@ def creature_detail_view(request, creature_id):
         'buy_form': buy_form,
         'sell_form': sell_form,
         'limit_form': limit_form,
+        'top_battles': top_battles,
     })
 
 
