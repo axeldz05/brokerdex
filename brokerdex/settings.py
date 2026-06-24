@@ -157,6 +157,9 @@ CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
+# Battle system configuration
+BATTLE_TURN_INTERVAL = 180  # seconds between battle turns (3 minutes)
+
 CELERY_BEAT_SCHEDULE = {
     'generar-batallas-cada-5-minutos': {
         'task': 'creature.tasks.matchmake_random_battle',

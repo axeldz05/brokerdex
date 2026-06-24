@@ -1,8 +1,9 @@
+from decimal import Decimal
 from django.test import TestCase
 from django.core.exceptions import ValidationError
 from datetime import timedelta
 from unittest.mock import patch
-from .models import Creature, Ability, Battle
+from .models import Creature, Ability, Battle, BattleInvestment
 
 class CreatureAndBattleTests(TestCase):
     def setUp(self):
@@ -75,3 +76,30 @@ class CreatureAndBattleTests(TestCase):
         future_time = current_time + timedelta(hours=2)
         mock_now.return_value = future_time
         self.assertTrue(self.charmander.is_available_for_battle())
+
+    def test_creature_has_battle_stats(self):
+        self.assertEqual(self.charmander.elo_rating, 1000)
+        self.assertEqual(self.charmander.wins, 0)
+        self.assertEqual(self.charmander.losses, 0)
+
+    def test_battle_has_elo_and_turn_fields(self):
+        battle = Battle.objects.start_battle(self.charmander, self.squirtle)
+        participants = list(battle.participants.all())
+        self.assertEqual(battle.creature_1_elo_before, 1000)
+        self.assertEqual(battle.creature_2_elo_before, 1000)
+        self.assertIsNotNone(battle.next_turn_at)
+        self.assertIsNone(battle.creature_1_elo_after)
+        self.assertIsNone(battle.creature_2_elo_after)
+
+    def test_battle_investment_creation(self):
+        battle = Battle.objects.start_battle(self.charmander, self.squirtle)
+        inv = BattleInvestment.objects.create(
+            battle=battle,
+            turn_number=1,
+            creature=self.charmander,
+            investor_count=5,
+            total_amount=Decimal('150.00')
+        )
+        self.assertEqual(inv.investor_count, 5)
+        self.assertEqual(inv.battle, battle)
+        self.assertEqual(inv.creature, self.charmander)
