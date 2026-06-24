@@ -21,6 +21,7 @@ from django.urls import include, path
 from . import views
 
 urlpatterns = [
+    path('sw.js', views.sw_js, name='sw_js'),
     path('', include('banking.urls')),
     path('', include('account.urls')),
     path('', include('dashboard.urls')),
