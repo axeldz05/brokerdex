@@ -1,115 +1,116 @@
 {% load humanize %}
 {% load trading_tags %}
 <div class="col-md-6 mb-4">
-    <div class="card battle-card" data-battle-id="{{ battle.id }}" style="cursor: pointer;" onclick="toggleBattleDetail(this)">
-        {% with participants=battle.participants.all %}
-        {% with p1=participants.0 p2=participants.1 %}
-        {% with c1=p1.creature c2=p2.creature %}
-        <div class="card-body">
-            <div class="row align-items-center text-center">
-                <div class="col-5">
-                    <div class="creature-portrait">
-                        {% if c1.small_icon_url %}
-                            <img src="{{ c1.small_icon_url }}" alt="{{ c1.name }}" class="img-fluid" style="max-height: 80px;">
-                        {% else %}
-                            <i class='bx bx-help-circle' style="font-size: 3rem;"></i>
+    {% with participants=battle.participants.all %}
+    {% with p1=participants.0 p2=participants.1 %}
+    {% if p1 and p2 and p1.creature and p2.creature %}
+    {% with c1=p1.creature c2=p2.creature %}
+    <a href="{% url 'creature:battle_detail' battle.id %}" class="text-decoration-none" style="color: inherit;">
+        <div class="card battle-card h-100">
+            <div class="card-body">
+                <div class="row align-items-center text-center">
+                    <div class="col-5">
+                        <div class="creature-portrait">
+                            {% if c1.small_icon_url %}
+                                <img src="{{ c1.small_icon_url }}" alt="{{ c1.name }}" class="img-fluid" style="max-height: 80px;">
+                            {% else %}
+                                <i class='bx bx-help-circle' style="font-size: 3rem;"></i>
+                            {% endif %}
+                            <div class="mt-1"><strong>{{ c1.name }}</strong></div>
+                            <span class="badge" style="background: {{ c1.type|type_bg }}; color: {{ c1.type|type_color }};">{{ c1.get_type_display }}</span>
+                        </div>
+                    </div>
+                    <div class="col-2">
+                        <div class="vs-text" style="font-size: 2rem; font-weight: 900; color: var(--accent-red); text-shadow: 0 0 10px rgba(248,81,73,0.5);">VS</div>
+                        {% if show_timer and battle.next_turn_at %}
+                            <div class="small text-muted mt-1">Next action:</div>
+                            <div class="battle-countdown small fw-bold" data-next-turn="{{ battle.next_turn_at|date:'c' }}">--</div>
                         {% endif %}
-                        <div class="mt-1"><strong>{{ c1.name }}</strong></div>
-                        <span class="badge" style="background: {{ c1.type|type_bg }}; color: {{ c1.type|type_color }};">{{ c1.get_type_display }}</span>
+                    </div>
+                    <div class="col-5">
+                        <div class="creature-portrait">
+                            {% if c2.small_icon_url %}
+                                <img src="{{ c2.small_icon_url }}" alt="{{ c2.name }}" class="img-fluid" style="max-height: 80px;">
+                            {% else %}
+                                <i class='bx bx-help-circle' style="font-size: 3rem;"></i>
+                            {% endif %}
+                            <div class="mt-1"><strong>{{ c2.name }}</strong></div>
+                            <span class="badge" style="background: {{ c2.type|type_bg }}; color: {{ c2.type|type_color }};">{{ c2.get_type_display }}</span>
+                        </div>
                     </div>
                 </div>
-                <div class="col-2">
-                    <div class="vs-text" style="font-size: 2rem; font-weight: 900; color: var(--accent-red); text-shadow: 0 0 10px rgba(248,81,73,0.5);">VS</div>
-                    {% if show_timer and battle.next_turn_at %}
-                        <div class="small text-muted mt-1">Next action:</div>
-                        <div class="battle-countdown small fw-bold" data-next-turn="{{ battle.next_turn_at|date:'c' }}">--</div>
+
+                <div class="row mt-3 align-items-center">
+                    <div class="col-5">
+                        <div class="d-flex justify-content-between small">
+                            <span>HP</span>
+                            <span>{{ p1.current_hp }}/{{ c1.hp }}</span>
+                        </div>
+                        <div class="progress" style="height: 8px; background: var(--bg-secondary);">
+                            {% widthratio p1.current_hp c1.hp 100 as hp_pct %}
+                            <div class="progress-bar bg-success" role="progressbar" style="width: {{ hp_pct }}%"></div>
+                        </div>
+                    </div>
+                    <div class="col-2 text-center">
+                        <span class="badge bg-secondary">Turn {{ battle.current_turn }}</span>
+                        <div class="small text-muted mt-1">
+                            {% if battle.current_turn|divisibleby:2 %}
+                                {{ c2.name }}'s turn
+                            {% else %}
+                                {{ c1.name }}'s turn
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="col-5">
+                        <div class="d-flex justify-content-between small">
+                            <span>HP</span>
+                            <span>{{ p2.current_hp }}/{{ c2.hp }}</span>
+                        </div>
+                        <div class="progress" style="height: 8px; background: var(--bg-secondary);">
+                            {% widthratio p2.current_hp c2.hp 100 as hp_pct %}
+                            <div class="progress-bar bg-success" role="progressbar" style="width: {{ hp_pct }}%"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row mt-3 small text-center">
+                    {% if battle.status == 'active' %}
+                        <div class="col-6">
+                            {% if battle.creature_1_potential_change %}
+                                <span class="text-success">Win: ▲ +{{ battle.creature_1_potential_change }}%</span><br>
+                                <span class="text-danger">Lose: ▼ -{{ battle.creature_2_potential_change|floatformat:2 }}%</span>
+                            {% endif %}
+                        </div>
+                        <div class="col-6">
+                            {% if battle.creature_2_potential_change %}
+                                <span class="text-success">Win: ▲ +{{ battle.creature_2_potential_change }}%</span><br>
+                                <span class="text-danger">Lose: ▼ -{{ battle.creature_1_potential_change|floatformat:2 }}%</span>
+                            {% endif %}
+                        </div>
+                    {% else %}
+                        <div class="col-12">
+                            <span class="fw-bold">
+                                Winner:
+                                {% if battle.winner %}
+                                    <span class="text-success">{{ battle.winner.creature.name }}</span>
+                                {% else %}
+                                    Draw
+                                {% endif %}
+                            </span>
+                        </div>
                     {% endif %}
                 </div>
-                <div class="col-5">
-                    <div class="creature-portrait">
-                        {% if c2.small_icon_url %}
-                            <img src="{{ c2.small_icon_url }}" alt="{{ c2.name }}" class="img-fluid" style="max-height: 80px;">
-                        {% else %}
-                            <i class='bx bx-help-circle' style="font-size: 3rem;"></i>
-                        {% endif %}
-                        <div class="mt-1"><strong>{{ c2.name }}</strong></div>
-                        <span class="badge" style="background: {{ c2.type|type_bg }}; color: {{ c2.type|type_color }};">{{ c2.get_type_display }}</span>
-                    </div>
-                </div>
-            </div>
-
-            <div class="row mt-3 align-items-center">
-                <div class="col-5">
-                    <div class="d-flex justify-content-between small">
-                        <span>HP</span>
-                        <span>{{ p1.current_hp }}/{{ c1.hp }}</span>
-                    </div>
-                    <div class="progress" style="height: 8px; background: var(--bg-secondary);">
-                        {% widthratio p1.current_hp c1.hp 100 as hp_pct %}
-                        <div class="progress-bar bg-success" role="progressbar" style="width: {{ hp_pct }}%"></div>
-                    </div>
-                </div>
-                <div class="col-2 text-center">
-                    <span class="badge bg-secondary">Turn {{ battle.current_turn }}</span>
-                    <div class="small text-muted mt-1">
-                        {% if battle.current_turn|divisibleby:2 %}
-                            {{ c2.name }}'s turn
-                        {% else %}
-                            {{ c1.name }}'s turn
-                        {% endif %}
-                    </div>
-                </div>
-                <div class="col-5">
-                    <div class="d-flex justify-content-between small">
-                        <span>HP</span>
-                        <span>{{ p2.current_hp }}/{{ c2.hp }}</span>
-                    </div>
-                    <div class="progress" style="height: 8px; background: var(--bg-secondary);">
-                        {% widthratio p2.current_hp c2.hp 100 as hp_pct %}
-                        <div class="progress-bar bg-success" role="progressbar" style="width: {{ hp_pct }}%"></div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="row mt-3 small text-center">
-                {% if battle.status == 'active' %}
-                    <div class="col-6">
-                        {% if battle.creature_1_potential_change %}
-                            <span class="text-success">Win: ▲ +{{ battle.creature_1_potential_change }}%</span><br>
-                            <span class="text-danger">Lose: ▼ -{{ battle.creature_2_potential_change|floatformat:2 }}%</span>
-                        {% endif %}
-                    </div>
-                    <div class="col-6">
-                        {% if battle.creature_2_potential_change %}
-                            <span class="text-success">Win: ▲ +{{ battle.creature_2_potential_change }}%</span><br>
-                            <span class="text-danger">Lose: ▼ -{{ battle.creature_1_potential_change|floatformat:2 }}%</span>
-                        {% endif %}
-                    </div>
-                {% else %}
-                    <div class="col-12">
-                        <span class="fw-bold">
-                            Winner: 
-                            {% if battle.winner %}
-                                <span class="text-success">{{ battle.winner.creature.name }}</span>
-                            {% else %}
-                                Draw
-                            {% endif %}
-                        </span>
-                    </div>
-                {% endif %}
             </div>
         </div>
-        {% endwith %}{% endwith %}{% endwith %}
-    </div>
-
-    <div class="battle-detail-panel" style="display: none;">
-        <div class="card-body border-top" style="border-color: var(--border-color) !important;">
-            <div class="battle-detail-content" data-battle-id="{{ battle.id }}">
-                <div class="text-center text-muted py-2">
-                    <div class="spinner-border spinner-border-sm" role="status"></div>
-                    Loading battle details...
-                </div>
-            </div>
+    </a>
+    {% endwith %}
+    {% else %}
+    <div class="card battle-card h-100" style="opacity: 0.4;">
+        <div class="card-body text-center text-muted py-4">
+            <i class='bx bx-error-circle' style="font-size: 2rem;"></i>
+            <p class="mb-0 mt-2">Invalid battle data</p>
         </div>
     </div>
+    {% endif %}
+    {% endwith %}{% endwith %}
 </div>

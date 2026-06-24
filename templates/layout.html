@@ -264,6 +264,16 @@
             background: var(--bg-secondary);
             color: var(--text-primary);
         }
+
+        .battle-card {
+            transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+            cursor: pointer;
+        }
+        .battle-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+            border-color: var(--accent-red) !important;
+        }
         </style>
     </head>
 

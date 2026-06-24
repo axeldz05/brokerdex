@@ -143,53 +143,6 @@
 
 {% block extra_js %}
 <script>
-// Toggle battle detail panel
-function toggleBattleDetail(card) {
-    const panel = card.querySelector('.battle-detail-panel');
-    const content = panel.querySelector('.battle-detail-content');
-    const battleId = content.dataset.battleId;
-
-    if (panel.style.display === 'none' || !panel.style.display) {
-        panel.style.display = 'block';
-        if (!content.dataset.loaded) {
-            fetch('/battles/' + battleId + '/', {
-                headers: { 'X-Requested-With': 'XMLHttpRequest' }
-            })
-            .then(r => r.json())
-            .then(data => {
-                let html = '';
-                data.actions.forEach(function(action) {
-                    html += '<div class="mb-2">';
-                    html += '<span class="badge bg-secondary me-2">Turn ' + action.turn + '</span>';
-                    html += '<strong>' + action.actor + '</strong> used <strong>' + action.ability + '</strong>';
-                    if (action.target) {
-                        html += ' on <strong>' + action.target + '</strong>';
-                    }
-                    if (action.damage > 0) {
-                        html += '<div class="text-danger small"><i class="bx bx-bolt"></i> ' + action.damage + ' damage</div>';
-                    }
-                    if (data.investments_per_turn && data.investments_per_turn[action.turn]) {
-                        data.investments_per_turn[action.turn].forEach(function(inv) {
-                            html += '<div class="text-info small"><i class="bx bx-user-plus"></i> ' + inv.count + ' people invested in ' + inv.creature + ' this turn!</div>';
-                        });
-                    }
-                    html += '</div>';
-                });
-                if (data.actions.length === 0) {
-                    html = '<div class="text-muted text-center py-2">No actions recorded yet. The battle is in progress...</div>';
-                }
-                content.innerHTML = html;
-                content.dataset.loaded = 'true';
-            })
-            .catch(function() {
-                content.innerHTML = '<div class="text-danger text-center py-2">Failed to load battle details.</div>';
-            });
-        }
-    } else {
-        panel.style.display = 'none';
-    }
-}
-
 // Countdown timer for active battle cards
 function updateCountdowns() {
     document.querySelectorAll('.battle-countdown').forEach(function(el) {
@@ -209,14 +162,14 @@ setInterval(function() {
     fetch(window.location.href, {
         headers: { 'X-Requested-With': 'XMLHttpRequest' }
     }).then(r => r.text()).then(html => {
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, 'text/html');
-        const newActive = doc.querySelector('#active');
-        const currentActive = document.querySelector('#active');
+        var parser = new DOMParser();
+        var doc = parser.parseFromString(html, 'text/html');
+        var newActive = doc.querySelector('#active');
+        var currentActive = document.querySelector('#active');
         if (newActive && currentActive) {
             currentActive.innerHTML = newActive.innerHTML;
         }
-    }).catch(() => {});
+    }).catch(function() {});
 }, 15000);
 </script>
 {% endblock %}
