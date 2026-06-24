@@ -533,8 +533,8 @@
                     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
                         <h3 style="margin-bottom:0;">Income & Expenses</h3>
                         <div style="display:flex; gap:0.25rem; background:var(--bg-secondary); border-radius:8px; padding:0.25rem;">
-                            <a href="?period=monthly" class="period-tab {% if period == 'monthly' %}active{% endif %}" id="tabMonthly">Monthly</a>
-                            <a href="?period=yearly" class="period-tab {% if period == 'yearly' %}active{% endif %}" id="tabYearly">Yearly</a>
+                            <button class="period-tab {% if period == 'monthly' %}active{% endif %}" id="tabMonthly" onclick="switchPeriod('monthly')">Monthly</button>
+                            <button class="period-tab {% if period == 'yearly' %}active{% endif %}" id="tabYearly" onclick="switchPeriod('yearly')">Yearly</button>
                         </div>
                     </div>
 
@@ -831,32 +831,20 @@ function buildIEChart() {
 buildIEChart();
 
 // --- Auto-refresh balance & summary ---
-const PERIOD = '{{ period }}';
+let currentPeriod = '{{ period }}';
 let refreshTimer = null;
 
-function refreshSummary() {
-    fetch('/trading/api/portfolio-summary/?period=' + PERIOD)
+function switchPeriod(period) {
+    currentPeriod = period;
+    document.getElementById('tabMonthly').classList.toggle('active', period === 'monthly');
+    document.getElementById('tabYearly').classList.toggle('active', period === 'yearly');
+    fetchIESection(period);
+}
+
+function fetchIESection(period) {
+    fetch('/trading/api/portfolio-summary/?period=' + period)
         .then(r => r.json())
         .then(data => {
-            const balEl = document.querySelector('.card-dark .value');
-            if (balEl && balEl.textContent.startsWith('$')) {
-                // Update cash balance card
-                const balCard = document.querySelectorAll('.card-dark')[document.querySelectorAll('.card-dark').length - 1];
-                if (balCard && balCard.querySelector('.value')) {
-                    balCard.querySelector('.value').textContent = '$' + data.balance.toFixed(2);
-                }
-            }
-            // Update summary cards
-            const summaryValues = document.querySelectorAll('.summary-card .value');
-            if (summaryValues.length >= 4) {
-                summaryValues[0].innerHTML = '$' + data.total_value.toFixed(2);
-                summaryValues[1].innerHTML = '$' + data.total_cost.toFixed(2);
-                const pnlSign = data.total_pnl >= 0 ? '+' : '';
-                summaryValues[2].innerHTML = pnlSign + '$' + data.total_pnl.toFixed(2) +
-                    '<span style="font-size:0.75rem;display:block;font-weight:400;">' +
-                    (data.total_pnl_pct >= 0 ? '+' : '') + data.total_pnl_pct.toFixed(2) + '%</span>';
-            }
-            // Update Income & Expenses cards
             const ti = document.getElementById('totalIncome');
             const te = document.getElementById('totalExpenses');
             const nf = document.getElementById('netFlow');
@@ -866,7 +854,45 @@ function refreshSummary() {
                 nf.textContent = (data.net_flow >= 0 ? '+' : '') + '$' + data.net_flow.toFixed(2);
                 nf.style.color = data.net_flow >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
             }
-            // Update IE chart data
+            if (ieChart) {
+                ieChart.data.labels = data.income_data.map(d => d.period);
+                ieChart.data.datasets[0].data = data.income_data.map(d => d.total);
+                ieChart.data.datasets[1].data = data.expenses_data.map(d => d.total);
+                ieChart.update();
+            }
+        })
+        .catch(() => {});
+}
+
+function refreshSummary() {
+    fetch('/trading/api/portfolio-summary/?period=' + currentPeriod)
+        .then(r => r.json())
+        .then(data => {
+            const balEl = document.querySelector('.card-dark .value');
+            if (balEl && balEl.textContent.startsWith('$')) {
+                const balCard = document.querySelectorAll('.card-dark')[document.querySelectorAll('.card-dark').length - 1];
+                if (balCard && balCard.querySelector('.value')) {
+                    balCard.querySelector('.value').textContent = '$' + data.balance.toFixed(2);
+                }
+            }
+            const summaryValues = document.querySelectorAll('.summary-card .value');
+            if (summaryValues.length >= 4) {
+                summaryValues[0].innerHTML = '$' + data.total_value.toFixed(2);
+                summaryValues[1].innerHTML = '$' + data.total_cost.toFixed(2);
+                const pnlSign = data.total_pnl >= 0 ? '+' : '';
+                summaryValues[2].innerHTML = pnlSign + '$' + data.total_pnl.toFixed(2) +
+                    '<span style="font-size:0.75rem;display:block;font-weight:400;">' +
+                    (data.total_pnl_pct >= 0 ? '+' : '') + data.total_pnl_pct.toFixed(2) + '%</span>';
+            }
+            const ti = document.getElementById('totalIncome');
+            const te = document.getElementById('totalExpenses');
+            const nf = document.getElementById('netFlow');
+            if (ti) ti.textContent = '$' + data.total_income.toFixed(2);
+            if (te) te.textContent = '$' + data.total_expenses.toFixed(2);
+            if (nf) {
+                nf.textContent = (data.net_flow >= 0 ? '+' : '') + '$' + data.net_flow.toFixed(2);
+                nf.style.color = data.net_flow >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
+            }
             if (ieChart) {
                 ieChart.data.labels = data.income_data.map(d => d.period);
                 ieChart.data.datasets[0].data = data.income_data.map(d => d.total);
