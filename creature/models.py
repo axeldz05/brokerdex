@@ -2,6 +2,7 @@ from django.db import models, transaction
 import os
 import uuid
 import datetime
+from decimal import Decimal
 
 from django.db.models.signals import m2m_changed
 from django.dispatch import receiver
@@ -129,6 +130,15 @@ class Creature(models.Model):
     def get_absolute_url(self):
         from django.urls import reverse
         return reverse('creature_detail', args=[str(self.id)])
+
+    def price_change(self):
+        """Returns (change_abs, change_pct) from previous_close to current_price."""
+        prev = self.previous_close
+        if prev and prev != 0:
+            change = self.current_price - prev
+            pct = (change / prev * 100).quantize(Decimal('0.01'))
+            return change.quantize(Decimal('0.01')), pct
+        return Decimal('0'), Decimal('0')
 
     @property
     def small_icon_url(self):

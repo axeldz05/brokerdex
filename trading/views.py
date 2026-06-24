@@ -28,13 +28,7 @@ def market_view(request):
     # Calculate change percentage for each creature
     creature_data = []
     for c in creatures:
-        if c.previous_close and c.previous_close > 0:
-            change = c.current_price - c.previous_close
-            change_pct = (change / c.previous_close) * 100
-        else:
-            change = Decimal('0')
-            change_pct = Decimal('0')
-
+        change, change_pct = c.price_change()
         creature_data.append({
             'creature': c,
             'change': change,
@@ -53,14 +47,7 @@ def creature_detail_view(request, creature_id):
     recent trades, and open orders.
     """
     creature = get_object_or_404(Creature, pk=creature_id)
-
-    # Price change
-    if creature.previous_close and creature.previous_close > 0:
-        change = creature.current_price - creature.previous_close
-        change_pct = (change / creature.previous_close) * 100
-    else:
-        change = Decimal('0')
-        change_pct = Decimal('0')
+    change, change_pct = creature.price_change()
 
     # User's holdings of this creature
     portfolio_entry = None
@@ -94,40 +81,8 @@ def creature_detail_view(request, creature_id):
         'creature': creature.pk,
     })
 
-    # Top battles for this creature: sorted by absolute valuation change
-    battle_history = BattleService.get_creature_battle_history(creature)
-    top_battles = []
-
-    for battle in battle_history:
-        if battle.status != 'finished':
-            continue
-        ps = list(battle.participants.all())
-        if len(ps) != 2:
-            continue
-
-        is_p1 = (ps[0].creature_id == creature.id)
-        p = ps[0] if is_p1 else ps[1]
-        opp = ps[1] if is_p1 else ps[0]
-
-        win_pct = battle.creature_1_potential_change if is_p1 else battle.creature_2_potential_change
-        lose_pct = battle.creature_2_potential_change if is_p1 else battle.creature_1_potential_change
-        win_pct = win_pct or Decimal('0')
-        lose_pct = lose_pct or Decimal('0')
-
-        won = bool(battle.winner and battle.winner.pk == p.pk)
-        change_pct = win_pct if won else -lose_pct
-        change_abs = (creature.current_price * change_pct / 100).quantize(Decimal('0.01'))
-
-        top_battles.append({
-            'battle': battle,
-            'opponent': opp.creature.name,
-            'change_pct': change_pct,
-            'change_abs': change_abs,
-            'won': won,
-        })
-
-    top_battles.sort(key=lambda x: abs(x['change_pct']), reverse=True)
-    top_battles = top_battles[:5]
+    # Top battles sorted by absolute valuation impact
+    top_battles = BattleService.get_top_battles(creature, limit=5)
 
     return render(request, 'trading/creature_detail.html', {
         'creature': creature,

@@ -1,4 +1,3 @@
-from decimal import Decimal
 import logging
 
 from django.contrib.auth.decorators import login_required
@@ -147,24 +146,16 @@ def battle_detail_view(request, battle_id):
         return redirect('creature:battle_list')
 
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-        return _battle_detail_json(battle)
+        return JsonResponse(BattleService.battle_to_dict(battle))
 
     # Compute actual price changes for finished battles
     price_changes = []
     participants_list = list(battle.participants.all())
     if battle.status == 'finished':
-        from decimal import Decimal as D
         for p in participants_list:
-            c = p.creature
-            prev = c.previous_close or c.current_price
-            if prev and prev != 0:
-                pct = ((c.current_price - prev) / prev * 100).quantize(D('0.01'))
-                abs_val = (c.current_price - prev).quantize(D('0.01'))
-            else:
-                pct = D('0')
-                abs_val = D('0')
+            abs_val, pct = p.creature.price_change()
             price_changes.append({
-                'name': c.name,
+                'name': p.creature.name,
                 'pct': pct,
                 'abs': abs_val,
                 'won': bool(battle.winner and battle.winner.pk == p.pk),
@@ -176,57 +167,6 @@ def battle_detail_view(request, battle_id):
         'actions_list': list(battle.actions.all()),
         'investments_list': list(battle.investments.all()),
         'price_changes': price_changes,
-    })
-
-
-def _battle_detail_json(battle):
-    """Return battle detail as JSON for AJAX loading."""
-    participants = list(battle.participants.all())
-    p1 = participants[0] if participants else None
-    p2 = participants[1] if len(participants) > 1 else None
-
-    actions_data = []
-    for action in battle.actions.all():
-        actions_data.append({
-            'turn': action.turn_number,
-            'actor': action.actor.creature.name if action.actor else 'Unknown',
-            'target': action.target.creature.name if action.target else 'Unknown',
-            'ability': action.ability.name if action.ability else 'Unknown',
-            'damage': action.damage_dealt,
-            'description': action.description,
-            'timestamp': action.timestamp.isoformat(),
-        })
-
-    investments_data = {}
-    for inv in battle.investments.all():
-        key = inv.turn_number
-        if key not in investments_data:
-            investments_data[key] = []
-        investments_data[key].append({
-            'creature': inv.creature.name,
-            'count': inv.investor_count,
-        })
-
-    return JsonResponse({
-        'id': battle.id,
-        'status': battle.status,
-        'current_turn': battle.current_turn,
-        'participants': [
-            {
-                'creature': p.creature.name,
-                'hp': p.current_hp,
-                'max_hp': p.creature.hp,
-                'icon_url': p.creature.small_icon_url,
-                'is_winner': battle.winner and battle.winner.pk == p.pk,
-            }
-            for p in [p1, p2] if p
-        ],
-        'potential_changes': {
-            'creature_1': float(battle.creature_1_potential_change) if battle.creature_1_potential_change else None,
-            'creature_2': float(battle.creature_2_potential_change) if battle.creature_2_potential_change else None,
-        },
-        'actions': actions_data,
-        'investments_per_turn': investments_data,
     })
 
 
