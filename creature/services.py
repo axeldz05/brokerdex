@@ -379,6 +379,98 @@ class BattleService:
             'participants__creature'
         ).order_by('-updated_at')
 
+    @staticmethod
+    def get_top_battles(creature, limit=5):
+        """
+        Return the creature's top battles sorted by absolute valuation impact.
+        Each entry is a dict with battle, opponent, change_pct, change_abs, won.
+        """
+        from decimal import Decimal as D
+        battles = Battle.objects.filter(
+            participants__creature=creature,
+            status='finished',
+        ).distinct().prefetch_related('participants__creature').order_by('-updated_at')
+
+        entries = []
+        for battle in battles:
+            ps = list(battle.participants.all())
+            if len(ps) != 2:
+                continue
+            is_p1 = (ps[0].creature_id == creature.id)
+            p = ps[0] if is_p1 else ps[1]
+            opp = ps[1] if is_p1 else ps[0]
+
+            win_pct = battle.creature_1_potential_change if is_p1 else battle.creature_2_potential_change
+            lose_pct = battle.creature_2_potential_change if is_p1 else battle.creature_1_potential_change
+            win_pct = win_pct or D('0')
+            lose_pct = lose_pct or D('0')
+
+            won = bool(battle.winner and battle.winner.pk == p.pk)
+            change_pct = win_pct if won else -lose_pct
+            change_abs = (creature.current_price * change_pct / 100).quantize(D('0.01'))
+
+            entries.append({
+                'battle': battle,
+                'opponent': opp.creature.name,
+                'change_pct': change_pct,
+                'change_abs': change_abs,
+                'won': won,
+            })
+
+        entries.sort(key=lambda x: abs(x['change_pct']), reverse=True)
+        return entries[:limit]
+
+    @staticmethod
+    def battle_to_dict(battle):
+        """Convert a Battle with related data into a JSON-safe dict."""
+        participants = list(battle.participants.all())
+        p1 = participants[0] if participants else None
+        p2 = participants[1] if len(participants) > 1 else None
+
+        actions_data = []
+        for action in battle.actions.all():
+            actions_data.append({
+                'turn': action.turn_number,
+                'actor': action.actor.creature.name if action.actor else 'Unknown',
+                'target': action.target.creature.name if action.target else 'Unknown',
+                'ability': action.ability.name if action.ability else 'Unknown',
+                'damage': action.damage_dealt,
+                'description': action.description,
+                'timestamp': action.timestamp.isoformat(),
+            })
+
+        investments_by_turn = {}
+        for inv in battle.investments.all():
+            key = inv.turn_number
+            if key not in investments_by_turn:
+                investments_by_turn[key] = []
+            investments_by_turn[key].append({
+                'creature': inv.creature.name,
+                'count': inv.investor_count,
+            })
+
+        return {
+            'id': battle.id,
+            'status': battle.status,
+            'current_turn': battle.current_turn,
+            'participants': [
+                {
+                    'creature': p.creature.name,
+                    'hp': p.current_hp,
+                    'max_hp': p.creature.hp,
+                    'icon_url': p.creature.small_icon_url,
+                    'is_winner': battle.winner and battle.winner.pk == p.pk,
+                }
+                for p in [p1, p2] if p
+            ],
+            'potential_changes': {
+                'creature_1': float(battle.creature_1_potential_change) if battle.creature_1_potential_change else None,
+                'creature_2': float(battle.creature_2_potential_change) if battle.creature_2_potential_change else None,
+            },
+            'actions': actions_data,
+            'investments_per_turn': investments_by_turn,
+        }
+
 
 class TrainingService:
     """
