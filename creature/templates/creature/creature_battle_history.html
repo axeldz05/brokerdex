@@ -1,0 +1,51 @@
+{% extends "layout.html" %}
+{% load static %}
+{% load humanize %}
+{% load trading_tags %}
+
+{% block content %}
+<div class="container mt-4">
+    <a href="{% url 'creature:battle_list' %}" class="btn btn-sm btn-outline-secondary mb-3">
+        <i class='bx bx-arrow-back'></i> Back to Battles
+    </a>
+
+    <div class="card mb-4">
+        <div class="card-body text-center">
+            {% if creature.small_icon_url %}
+                <img src="{{ creature.small_icon_url }}" alt="{{ creature.name }}" style="max-height: 80px;">
+            {% endif %}
+            <h3 class="mt-2">{{ creature.name }}</h3>
+            <span class="badge" style="background: {{ creature.type|type_bg }}; color: {{ creature.type|type_color }};">{{ creature.get_type_display }}</span>
+            <div class="row mt-3">
+                <div class="col-4">
+                    <div class="text-success fw-bold">{{ creature.wins }}</div>
+                    <div class="small text-muted">Wins</div>
+                </div>
+                <div class="col-4">
+                    <div class="text-danger fw-bold">{{ creature.losses }}</div>
+                    <div class="small text-muted">Losses</div>
+                </div>
+                <div class="col-4">
+                    <div class="fw-bold">${{ creature.current_price|floatformat:2 }}</div>
+                    <div class="small text-muted">Price</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <h4><i class='bx bx-list-ul'></i> Battle History</h4>
+
+    {% if battles %}
+        <div class="row">
+        {% for battle in battles %}
+            {% include "creature/includes/battle_card.html" with battle=battle show_timer=False %}
+        {% endfor %}
+        </div>
+    {% else %}
+        <div class="text-center text-muted py-5">
+            <i class='bx bx-history' style="font-size: 3rem;"></i>
+            <p class="mt-2">{{ creature.name }} hasn't participated in any battles yet.</p>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

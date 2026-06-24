@@ -1,0 +1,222 @@
+{% extends "layout.html" %}
+{% load static %}
+{% load humanize %}
+{% load trading_tags %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2 class="mb-4"><i class='bx bx-shield-quarter'></i> Battles</h2>
+
+    <ul class="nav nav-tabs mb-4" id="battleTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="active-tab" data-bs-toggle="tab" data-bs-target="#active" type="button" role="tab">
+                Active Battles
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="historical-tab" data-bs-toggle="tab" data-bs-target="#historical" type="button" role="tab">
+                Historical
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="mybattles-tab" data-bs-toggle="tab" data-bs-target="#mybattles" type="button" role="tab">
+                My Battles
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="leaderboard-tab" data-bs-toggle="tab" data-bs-target="#leaderboard" type="button" role="tab">
+                Leaderboard
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content">
+        <div class="tab-pane fade show active" id="active" role="tabpanel">
+            {% if active_battles %}
+                <div class="row">
+                {% for battle in active_battles %}
+                    {% include "creature/includes/battle_card.html" with battle=battle show_timer=True %}
+                {% endfor %}
+                </div>
+            {% else %}
+                <div class="text-center text-muted py-5">
+                    <i class='bx bx-shield-quarter' style="font-size: 3rem;"></i>
+                    <p class="mt-2">No active battles right now. The system matches creatures automatically every few minutes.</p>
+                </div>
+            {% endif %}
+        </div>
+
+        <div class="tab-pane fade" id="historical" role="tabpanel">
+            {% if historical_battles %}
+                <div class="row">
+                {% for battle in historical_battles %}
+                    {% include "creature/includes/battle_card.html" with battle=battle show_timer=False %}
+                {% endfor %}
+                </div>
+            {% else %}
+                <div class="text-center text-muted py-5">
+                    <i class='bx bx-history' style="font-size: 3rem;"></i>
+                    <p class="mt-2">No battles have been completed yet.</p>
+                </div>
+            {% endif %}
+        </div>
+
+        <div class="tab-pane fade" id="mybattles" role="tabpanel">
+            {% if user_battles %}
+                <div class="row">
+                {% for battle in user_battles %}
+                    {% include "creature/includes/battle_card.html" with battle=battle show_timer=False %}
+                {% endfor %}
+                </div>
+            {% else %}
+                <div class="text-center text-muted py-5">
+                    <i class='bx bx-user' style="font-size: 3rem;"></i>
+                    <p class="mt-2">None of your creatures have participated in battles yet.</p>
+                </div>
+            {% endif %}
+        </div>
+
+        <div class="tab-pane fade" id="leaderboard" role="tabpanel">
+            {% if leaderboard %}
+                <div class="table-responsive">
+                    <table class="table table-hover" id="leaderboardTable">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Creature</th>
+                                <th>Type</th>
+                                <th>Wins</th>
+                                <th>Losses</th>
+                                <th>Win Rate</th>
+                                <th>Price</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for creature in leaderboard %}
+                            <tr class="creature-row" data-creature-id="{{ creature.id }}" style="cursor: pointer;">
+                                <td>{{ forloop.counter }}</td>
+                                <td>
+                                    <div class="d-flex align-items-center">
+                                        {% if creature.small_icon_url %}
+                                            <img src="{{ creature.small_icon_url }}" alt="{{ creature.name }}" style="width: 32px; height: 32px; margin-right: 8px;">
+                                        {% else %}
+                                            <i class='bx bx-help-circle' style="font-size: 1.5rem; margin-right: 8px;"></i>
+                                        {% endif %}
+                                        <strong>{{ creature.name }}</strong>
+                                    </div>
+                                </td>
+                                <td><span class="badge" style="background: {{ creature.type|type_bg }}; color: {{ creature.type|type_color }};">{{ creature.get_type_display }}</span></td>
+                                <td class="text-success fw-bold">{{ creature.wins }}</td>
+                                <td class="text-danger fw-bold">{{ creature.losses }}</td>
+                                <td>
+                                    {% with total=creature.wins|add:creature.losses %}
+                                        {% if total > 0 %}
+                                            {{ creature.wins }}/{{ total }}
+                                            ({% widthratio creature.wins total 100 %}%)
+                                        {% else %}
+                                            —
+                                        {% endif %}
+                                    {% endwith %}
+                                </td>
+                                <td>${{ creature.current_price|floatformat:2 }}</td>
+                                <td>
+                                    <a href="{% url 'creature:creature_battle_history' creature.id %}" class="btn btn-sm btn-outline-primary">
+                                        <i class='bx bx-list-ul'></i> Full History
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="text-center text-muted py-5">
+                    <i class='bx bx-trophy' style="font-size: 3rem;"></i>
+                    <p class="mt-2">No creatures have battle records yet.</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Toggle battle detail panel
+function toggleBattleDetail(card) {
+    const panel = card.querySelector('.battle-detail-panel');
+    const content = panel.querySelector('.battle-detail-content');
+    const battleId = content.dataset.battleId;
+
+    if (panel.style.display === 'none' || !panel.style.display) {
+        panel.style.display = 'block';
+        if (!content.dataset.loaded) {
+            fetch('/battles/' + battleId + '/', {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            })
+            .then(r => r.json())
+            .then(data => {
+                let html = '';
+                data.actions.forEach(function(action) {
+                    html += '<div class="mb-2">';
+                    html += '<span class="badge bg-secondary me-2">Turn ' + action.turn + '</span>';
+                    html += '<strong>' + action.actor + '</strong> used <strong>' + action.ability + '</strong>';
+                    if (action.target) {
+                        html += ' on <strong>' + action.target + '</strong>';
+                    }
+                    if (action.damage > 0) {
+                        html += '<div class="text-danger small"><i class="bx bx-bolt"></i> ' + action.damage + ' damage</div>';
+                    }
+                    if (data.investments_per_turn && data.investments_per_turn[action.turn]) {
+                        data.investments_per_turn[action.turn].forEach(function(inv) {
+                            html += '<div class="text-info small"><i class="bx bx-user-plus"></i> ' + inv.count + ' people invested in ' + inv.creature + ' this turn!</div>';
+                        });
+                    }
+                    html += '</div>';
+                });
+                if (data.actions.length === 0) {
+                    html = '<div class="text-muted text-center py-2">No actions recorded yet. The battle is in progress...</div>';
+                }
+                content.innerHTML = html;
+                content.dataset.loaded = 'true';
+            })
+            .catch(function() {
+                content.innerHTML = '<div class="text-danger text-center py-2">Failed to load battle details.</div>';
+            });
+        }
+    } else {
+        panel.style.display = 'none';
+    }
+}
+
+// Countdown timer for active battle cards
+function updateCountdowns() {
+    document.querySelectorAll('.battle-countdown').forEach(function(el) {
+        const nextTurn = new Date(el.dataset.nextTurn).getTime();
+        const now = new Date().getTime();
+        const diff = Math.max(0, nextTurn - now);
+        const minutes = Math.floor(diff / 60000);
+        const seconds = Math.floor((diff % 60000) / 1000);
+        el.textContent = minutes + 'm ' + seconds + 's';
+    });
+}
+setInterval(updateCountdowns, 1000);
+updateCountdowns();
+
+// Auto-refresh active battles every 15 seconds
+setInterval(function() {
+    fetch(window.location.href, {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    }).then(r => r.text()).then(html => {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        const newActive = doc.querySelector('#active');
+        const currentActive = document.querySelector('#active');
+        if (newActive && currentActive) {
+            currentActive.innerHTML = newActive.innerHTML;
+        }
+    }).catch(() => {});
+}, 15000);
+</script>
+{% endblock %}

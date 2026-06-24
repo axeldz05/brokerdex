@@ -448,6 +448,111 @@ class BattleServiceIntegrationTests(TestCase):
         self.assertIn(battle, historical)
 
 
+class BattleViewIntegrationTests(TestCase):
+    """Integration tests for battle views."""
+
+    def setUp(self):
+        self.client = Client()
+        self.user = Account.objects.create_user(
+            username='viewer', email='vw@test.com', password='testpass123',
+        )
+        self.user.balance_cents = 100_000_00
+        self.user.save()
+
+        self.ability = Ability.objects.create(
+            name='Tackle', ability_type='normal',
+            damage_class='physical', power=40,
+        )
+        self.creature_1 = Creature.objects.create(
+            name='Charmander', type='fire',
+            current_price=Decimal('100.00'), hp=39,
+            attack=52, defense=43,
+            battle_cooldown=timedelta(hours=1),
+            cooldown_expires_at=timezone.now() - timedelta(hours=1),
+        )
+        self.creature_1.abilities.add(self.ability)
+        self.creature_2 = Creature.objects.create(
+            name='Squirtle', type='water',
+            current_price=Decimal('100.00'), hp=44,
+            attack=48, defense=65,
+            battle_cooldown=timedelta(hours=1),
+            cooldown_expires_at=timezone.now() - timedelta(hours=1),
+        )
+        self.creature_2.abilities.add(self.ability)
+
+    def _login(self):
+        self.client.login(username='viewer', password='testpass123')
+
+    def test_battle_list_requires_login(self):
+        response = self.client.get(reverse('creature:battle_list'))
+        self.assertEqual(response.status_code, 302)
+
+    def test_battle_list_shows_active_battles(self):
+        self._login()
+        BattleService.start_battle(self.creature_1, self.creature_2)
+        response = self.client.get(reverse('creature:battle_list'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Active Battles')
+
+    def test_battle_list_shows_leaderboard(self):
+        self._login()
+        self.creature_1.wins = 5
+        self.creature_1.save()
+        response = self.client.get(reverse('creature:battle_list'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Leaderboard')
+
+    def test_battle_detail_requires_login(self):
+        battle = BattleService.start_battle(self.creature_1, self.creature_2)
+        response = self.client.get(
+            reverse('creature:battle_detail', args=[battle.id])
+        )
+        self.assertEqual(response.status_code, 302)
+
+    def test_battle_detail_shows_actions(self):
+        self._login()
+        battle = BattleService.start_battle(self.creature_1, self.creature_2)
+        p1 = battle.participants.get(creature=self.creature_1)
+        p2 = battle.participants.get(creature=self.creature_2)
+        battle.record_action(
+            actor_participant=p1, target_participant=p2,
+            ability=self.ability, damage=20,
+        )
+
+        response = self.client.get(
+            reverse('creature:battle_detail', args=[battle.id])
+        )
+        self.assertEqual(response.status_code, 200)
+
+    def test_battle_detail_json(self):
+        self._login()
+        battle = BattleService.start_battle(self.creature_1, self.creature_2)
+        response = self.client.get(
+            reverse('creature:battle_detail', args=[battle.id]),
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn('participants', data)
+        self.assertIn('actions', data)
+
+    def test_creature_battle_history_requires_login(self):
+        response = self.client.get(
+            reverse('creature:creature_battle_history', args=[self.creature_1.pk])
+        )
+        self.assertEqual(response.status_code, 302)
+
+    def test_creature_battle_history_shows_battles(self):
+        self._login()
+        BattleService.start_battle(self.creature_1, self.creature_2)
+        response = self.client.get(
+            reverse('creature:creature_battle_history', args=[self.creature_1.pk])
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Charmander')
+        self.assertContains(response, 'History')
+
+
 class BattleTaskIntegrationTests(TestCase):
     """Integration tests for Celery battle tasks."""
 
