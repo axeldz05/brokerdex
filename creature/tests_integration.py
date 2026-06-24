@@ -9,7 +9,8 @@ from django.utils import timezone
 
 from account.models import Account
 from .models import Creature, Ability, EggTemplate, Incubation
-from .services import IncubationService
+from .services import IncubationService, TrainingService
+from trading.models import Portfolio
 
 
 class IncubationIntegrationTests(TestCase):
@@ -149,3 +150,94 @@ class IncubationIntegrationTests(TestCase):
         response = self.client.get(reverse('creature:incubation_status'))
         self.assertContains(response, 'Hatched')
         self.assertContains(response, 'Bulbasaur')
+
+
+class TrainingIntegrationTests(TestCase):
+    """Integration tests for the training system."""
+
+    def setUp(self):
+        self.celery_patcher = patch('creature.tasks.complete_training.apply_async')
+        self.mock_async = self.celery_patcher.start()
+        self.mock_async.return_value = MagicMock(id='fake-task-id')
+        self.addCleanup(self.celery_patcher.stop)
+
+        self.client = Client()
+        self.user = Account.objects.create_user(
+            username='trainer',
+            email='tr@test.com',
+            password='testpass123',
+        )
+        self.user.balance_cents = 100_000_00
+        self.user.save()
+
+        self.ability = Ability.objects.create(
+            name='Scratch', ability_type='normal',
+            damage_class='physical', power=40,
+        )
+
+        self.creature = Creature.objects.create(
+            name='Charmander', type='fire',
+            current_price=Decimal('200.00'),
+            previous_close=Decimal('190.00'),
+            hp=39, attack=52, defense=43,
+            special_attack=60, special_defense=50, speed=65,
+            battle_cooldown=timedelta(hours=1),
+            description='A fire lizard.',
+        )
+        self.creature.abilities.add(self.ability)
+
+        self.portfolio = Portfolio.objects.create(
+            owner=self.user,
+            creature=self.creature,
+            quantity=Decimal('3'),
+            average_cost=Decimal('200.00'),
+        )
+
+    def _login(self):
+        self.client.login(username='trainer', password='testpass123')
+
+    def test_training_requires_login(self):
+        response = self.client.post(
+            reverse('creature:train_creature', args=[self.portfolio.pk])
+        )
+        self.assertEqual(response.status_code, 302)
+
+    def test_training_deducts_balance(self):
+        self._login()
+        response = self.client.post(
+            reverse('creature:train_creature', args=[self.portfolio.pk])
+        )
+        self.assertRedirects(response, reverse('trading:portfolio'))
+
+        self.user.refresh_from_db()
+        expected_cost = int((self.creature.current_price * Decimal('0.10')) * 100)
+        expected_balance = 100_000_00 - expected_cost
+        self.assertEqual(self.user.balance_cents, expected_balance)
+
+    def test_training_insufficient_funds(self):
+        self._login()
+        self.user.balance_cents = 100
+        self.user.save()
+
+        response = self.client.post(
+            reverse('creature:train_creature', args=[self.portfolio.pk]),
+            follow=True,
+        )
+        self.assertContains(response, 'Insufficient funds')
+
+    def test_training_calls_celery_task(self):
+        self._login()
+        self.client.post(
+            reverse('creature:train_creature', args=[self.portfolio.pk])
+        )
+        self.mock_async.assert_called_once()
+
+    def test_training_not_own_portfolio_404(self):
+        other = Account.objects.create_user(
+            username='other', email='other@test.com', password='testpass123',
+        )
+        self.client.login(username='other', password='testpass123')
+        response = self.client.post(
+            reverse('creature:train_creature', args=[self.portfolio.pk])
+        )
+        self.assertEqual(response.status_code, 404)

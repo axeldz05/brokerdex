@@ -225,11 +225,12 @@
                                     <th class="text-end hide-mobile">Avg Cost</th>
                                     <th class="text-end">Value</th>
                                     <th class="text-end">P&L</th>
+                                    <th class="text-end">Train</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {% for entry in entries %}
-                                <tr onclick="window.location='{% url 'trading:creature_detail' creature_id=entry.creature.pk %}'">
+                                {% for entry in entry_list %}
+                                <tr>
                                     <td>
                                         <div class="creature-cell">
                                             {% if entry.creature.small_icon_url %}
@@ -255,6 +256,15 @@
                                         <span style="font-size:0.75rem; color: var(--text-secondary);">
                                             {% if entry.unrealized_pnl_pct >= 0 %}+{% endif %}{{ entry.unrealized_pnl_pct|floatformat:2 }}%
                                         </span>
+                                    </td>
+                                    <td class="text-end">
+                                        <form method="POST" action="{% url 'creature:train_creature' portfolio_id=entry.pk %}">
+                                            {% csrf_token %}
+                                            <button type="submit" class="btn btn-sm"
+                                                    style="background: var(--accent-blue); color: #fff; border: none; border-radius: 6px; padding: 0.3rem 0.6rem; font-size: 0.75rem; white-space: nowrap;">
+                                                Train ${{ entry.training_cost|floatformat:0 }}
+                                            </button>
+                                        </form>
                                     </td>
                                 </tr>
                                 {% endfor %}

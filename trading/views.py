@@ -10,6 +10,7 @@ from creature.models import Creature
 from .forms import MarketOrderForm, LimitOrderForm
 from .models import Order, Trade, Portfolio, PriceHistory
 from .services import TradingEngine
+from creature.services import TrainingService
 
 
 @login_required
@@ -194,7 +195,23 @@ def portfolio_view(request):
         t = entry.creature.type
         type_distribution[t] = type_distribution.get(t, Decimal('0')) + entry.current_value
 
+    # Annotate entries with training cost
+    entry_list = []
+    for entry in entries:
+        entry_list.append({
+            'pk': entry.pk,
+            'creature': entry.creature,
+            'quantity': entry.quantity,
+            'average_cost': entry.average_cost,
+            'current_value': entry.current_value,
+            'cost_basis': entry.cost_basis,
+            'unrealized_pnl': entry.unrealized_pnl,
+            'unrealized_pnl_pct': entry.unrealized_pnl_pct,
+            'training_cost': TrainingService.get_training_cost(entry.creature),
+        })
+
     return render(request, 'trading/portfolio.html', {
+        'entry_list': entry_list,
         'entries': entries,
         'total_value': total_value,
         'total_cost': total_cost,
