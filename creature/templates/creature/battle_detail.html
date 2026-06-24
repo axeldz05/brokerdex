@@ -15,10 +15,12 @@
         <div class="card-body">
             <div class="row align-items-center text-center">
                 <div class="col-4">
+                    <a href="{% url 'trading:creature_detail' c1.id %}" class="text-decoration-none" style="color: inherit;">
                     {% if c1.small_icon_url %}
                         <img src="{{ c1.small_icon_url }}" alt="{{ c1.name }}" class="img-fluid" style="max-height: 100px;">
                     {% endif %}
                     <h4>{{ c1.name }}</h4>
+                    </a>
                     <span class="badge" style="background: {{ c1.type|type_bg }}; color: {{ c1.type|type_color }};">{{ c1.get_type_display }}</span>
                     {% if battle.winner and battle.winner.pk == p1.pk %}
                         <div class="text-success mt-1"><i class='bx bx-trophy'></i> Winner</div>
@@ -63,10 +65,12 @@
                     {% endif %}
                 </div>
                 <div class="col-4">
+                    <a href="{% url 'trading:creature_detail' c2.id %}" class="text-decoration-none" style="color: inherit;">
                     {% if c2.small_icon_url %}
                         <img src="{{ c2.small_icon_url }}" alt="{{ c2.name }}" class="img-fluid" style="max-height: 100px;">
                     {% endif %}
                     <h4>{{ c2.name }}</h4>
+                    </a>
                     <span class="badge" style="background: {{ c2.type|type_bg }}; color: {{ c2.type|type_color }};">{{ c2.get_type_display }}</span>
                     {% if battle.winner and battle.winner.pk == p2.pk %}
                         <div class="text-success mt-1"><i class='bx bx-trophy'></i> Winner</div>
