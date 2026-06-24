@@ -281,3 +281,40 @@ class PriceHistory(models.Model):
             f"O:{self.open_price} H:{self.high_price} "
             f"L:{self.low_price} C:{self.close_price}"
         )
+
+
+class MarketIndex(models.Model):
+    """
+    Aggregated market index for a given type (e.g. Water-Type Index).
+    Weighted average of all creatures of that type.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    creature_type = models.CharField(max_length=15, choices=Creature._meta.get_field('type').choices)
+    value = models.DecimalField(max_digits=12, decimal_places=2)
+    previous_value = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0'))
+    total_volume = models.DecimalField(
+        max_digits=18, decimal_places=8, default=Decimal('0'),
+        help_text="Total trading volume across all creatures in this index",
+    )
+    creature_count = models.PositiveIntegerField(default=0)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['creature_type', 'timestamp']),
+        ]
+        verbose_name_plural = 'market indices'
+
+    def __str__(self):
+        return (
+            f"{self.get_creature_type_display()}-Type Index: "
+            f"{self.value} [{self.timestamp:%Y-%m-%d}]"
+        )
+
+    @property
+    def change_pct(self):
+        if self.previous_value == 0:
+            return Decimal('0')
+        return ((self.value - self.previous_value) / self.previous_value * 100).quantize(Decimal('0.01'))

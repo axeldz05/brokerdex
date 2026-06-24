@@ -72,3 +72,14 @@ def update_price_after_battle(creature_id, won):
     new_price = PricingEngine.update_creature_price(creature)
     result = "won" if won else "lost"
     return f"{creature.name} {result} — new price: ${new_price}"
+
+
+@shared_task
+def calculate_market_indices():
+    """
+    Periodic task: calculate and record market indices for all types.
+    Should run daily via Celery Beat.
+    """
+    from .services import MarketIndicesService
+    indices = MarketIndicesService.calculate_all_indices()
+    return f"Recorded {len(indices)} market indices."

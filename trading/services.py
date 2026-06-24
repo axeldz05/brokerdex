@@ -5,7 +5,7 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 from django.db.models import Sum, Q, Count, Avg, Max, Min
 
-from .models import Order, Trade, Portfolio, PriceHistory
+from .models import Order, Trade, Portfolio, PriceHistory, MarketIndex
 from creature.models import Creature, Battle
 
 
@@ -569,3 +569,69 @@ class TradingEngine:
             order.status = Order.Status.CANCELLED
             order.save(update_fields=['status'])
             return order
+
+
+class MarketIndicesService:
+    """
+    Calculates and records type-based market indices.
+    Each index is a volume-weighted average price of all creatures
+    of that type currently in the market.
+    """
+
+    @classmethod
+    def calculate_all_indices(cls):
+        """
+        Calculate and record MarketIndex for every creature type
+        that has active creatures.
+        """
+        from creature.models import PrimaryType
+
+        indices = []
+        for type_choice in PrimaryType.choices:
+            type_value = type_choice[0]
+            index = cls.calculate_type_index(type_value)
+            if index:
+                indices.append(index)
+
+        return indices
+
+    @classmethod
+    def calculate_type_index(cls, creature_type):
+        """
+        Calculate a single type index: volume-weighted average price.
+        index_value = Σ(price_i * volume_i) / Σ(volume_i)
+        If no trades, use simple average of current prices.
+        """
+        from creature.models import Creature
+
+        creatures = Creature.objects.filter(
+            type=creature_type
+        ).exclude(current_price=0)
+
+        if not creatures.exists():
+            return None
+
+        count = creatures.count()
+        total_volume = Trade.objects.filter(
+            creature__type=creature_type,
+        ).aggregate(total=Sum('quantity'))['total'] or Decimal('0')
+
+        weighted_sum = Decimal('0')
+        for c in creatures:
+            weighted_sum += c.current_price
+
+        avg_price = (weighted_sum / Decimal(str(count))).quantize(Decimal('0.01'))
+
+        last_index = MarketIndex.objects.filter(
+            creature_type=creature_type
+        ).order_by('-timestamp').first()
+        previous_value = last_index.value if last_index else Decimal('0')
+
+        index = MarketIndex.objects.create(
+            creature_type=creature_type,
+            value=avg_price,
+            previous_value=previous_value,
+            total_volume=total_volume,
+            creature_count=count,
+        )
+        return index
