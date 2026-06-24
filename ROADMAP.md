@@ -112,13 +112,24 @@ Un sistema de emparejamiento de órdenes *Peer-to-Peer* (P2P) simplificado.
 * [x] Desarrollar el script del **Battle Engine** (lógica de combate rápida basada en stats).
     * `matchmake_random_battle()` / `process_battle_turn()` en `creature/tasks.py`.
 * [x] Crear las tareas programadas (Celery Beats) para las batallas automáticas cada 5 minutos.
-* [ ] Desarrollar los servicios asíncronos de Incubación.
-* [ ] Desarrollar los servicios asíncronos de Entrenamiento.
+* [x] Desarrollar los servicios asíncronos de Incubación.
+    * `EggTemplate` + `Incubation` models, `IncubationService`, `hatch_egg` Celery task.
+    * Tests de integración: 8 tests (shop, purchase, hatching, status).
+* [x] Desarrollar los servicios asíncronos de Entrenamiento.
+    * `TrainingService`, `complete_training` Celery task (stat boost + price update).
+    * Tests de integración: 5 tests (cost, balance, 404, Celery call).
 
 ### Fase 3: Analytics, Visualización y UI Premium (Sprints 5-6)
 
-* [ ] Crear los comandos de agregación de datos para calcular los índices de mercado diarios (`MarketIndices`).
+* [x] Crear los comandos de agregación de datos para calcular los índices de mercado diarios (`MarketIndices`).
+    * `MarketIndex` model, `MarketIndicesService`, `calculate_market_indices` Celery task.
+    * Tests de integración: 6 tests (cálculo, page, API).
 * [ ] Conectar el frontend con las librerías de gráficos para renderizar el historial de precios en tiempo real.
-* [ ] Desarrollar la sección de analíticas de portafolio del usuario (cálculo automatizado de P&L y ROI).
-* [ ] Implementar el sistema de alertas visuales de volatilidad.
+    * Chart.js integrated in creature detail template (line chart).
+* [x] Desarrollar la sección de analíticas de portafolio del usuario (cálculo automatizado de P&L y ROI).
+    * Unrealized P&L, Realized P&L, Total Return, type distribution donut chart.
+    * Tests de integración: 14 tests de trading + portafolio.
+* [x] Implementar el sistema de alertas visuales de volatilidad.
+    * `Notification` model, `VolatilityService`, circuit breaker en `Creature`.
+    * Tests de integración: 7 tests (alerta, circuit breaker, notificaciones).
 
