@@ -1,6 +1,7 @@
 import json
 import os
 import random
+import urllib.request
 from decimal import Decimal
 from datetime import timedelta
 
@@ -8,6 +9,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 from django.db import transaction
 from django.conf import settings
+from django.core.files.base import ContentFile
 
 from account.models import Account
 from creature.models import Creature, Ability, EggTemplate, Battle, BattleParticipant, BattleAction, BattleInvestment
@@ -30,6 +32,28 @@ def get_or_none(model_class, **kwargs):
     try:
         return model_class.objects.get(**kwargs)
     except model_class.DoesNotExist:
+        return None
+
+
+POKEAPI_SPRITE_URL = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon"
+POKEAPI_ARTWORK_URL = "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork"
+
+POKEAPI_ID_MAP = {
+    "Charizard": 6, "Blastoise": 9, "Venusaur": 3, "Pikachu": 25,
+    "Raichu": 26, "Gengar": 94, "Dragonite": 149, "Mewtwo": 150,
+    "Lucario": 448, "Garchomp": 445, "Tyranitar": 248, "Gyarados": 130,
+    "Sylveon": 700, "Scizor": 212, "Alakazam": 65, "Rayquaza": 384,
+    "Mew": 151, "Greninja": 658, "Gardevoir": 282, "Metagross": 376,
+}
+
+
+def fetch_sprite(url, filename):
+    """Download a sprite from PokeAPI and return a ContentFile, or None."""
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Brokerdex/1.0"})
+        data = urllib.request.urlopen(req, timeout=10).read()
+        return ContentFile(data, name=filename)
+    except Exception:
         return None
 
 
@@ -139,6 +163,32 @@ class Command(BaseCommand):
                     ))
 
         self.stdout.write(f"  Creatures: {created} created / {len(creatures_data)} total")
+
+        # Fetch sprites for creatures that don't have icons yet
+        fetched = 0
+        for creature in Creature.objects.all():
+            pokedex_id = POKEAPI_ID_MAP.get(creature.name)
+            if not pokedex_id:
+                continue
+            if not creature.small_icon:
+                small_file = fetch_sprite(
+                    f"{POKEAPI_SPRITE_URL}/{pokedex_id}.png",
+                    f"small_{creature.name.lower()}.png"
+                )
+                if small_file:
+                    creature.small_icon.save(f"small_{creature.name.lower()}.png", small_file, save=False)
+            if not creature.large_icon:
+                large_file = fetch_sprite(
+                    f"{POKEAPI_ARTWORK_URL}/{pokedex_id}.png",
+                    f"large_{creature.name.lower()}.png"
+                )
+                if large_file:
+                    creature.large_icon.save(f"large_{creature.name.lower()}.png", large_file, save=False)
+            if creature.small_icon or creature.large_icon:
+                creature.save(update_fields=['small_icon', 'large_icon'])
+                fetched += 1
+        if fetched:
+            self.stdout.write(f"  Creature sprites: {fetched} updated")
 
     def _seed_egg_templates(self):
         eggs_data = load_json('egg_templates.json')
