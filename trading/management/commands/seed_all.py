@@ -10,7 +10,8 @@ from django.db import transaction
 from django.conf import settings
 
 from account.models import Account
-from creature.models import Creature, Ability, EggTemplate, Battle, BattleParticipant, BattleAction
+from creature.models import Creature, Ability, EggTemplate, Battle, BattleParticipant, BattleAction, BattleInvestment
+from creature.services import BattleService
 
 
 
@@ -69,6 +70,10 @@ class Command(BaseCommand):
 
     def _clear_data(self):
         self.stdout.write('Clearing existing data...')
+        BattleInvestment.objects.all().delete()
+        BattleAction.objects.all().delete()
+        BattleParticipant.objects.all().delete()
+        Battle.objects.all().delete()
         EggTemplate.objects.all().delete()
         Creature.objects.all().delete()
         Ability.objects.all().delete()
@@ -242,8 +247,8 @@ class Command(BaseCommand):
 
     def _create_demo_battles(self):
         battles_data = load_json('demo_battles.json')
-        from trading.services import PricingEngine
-        created = 0
+        created_finished = 0
+
         for data in battles_data:
             c1 = get_or_none(Creature, name=data['creature_1'])
             c2 = get_or_none(Creature, name=data['creature_2'])
@@ -255,7 +260,7 @@ class Command(BaseCommand):
                 continue
 
             try:
-                battle = Battle.objects.start_battle(c1, c2)
+                battle = BattleService.start_battle(c1, c2)
                 participants = list(battle.participants.select_related('creature').all())
 
                 # Set high HP so all demo turns can execute
@@ -279,17 +284,38 @@ class Command(BaseCommand):
                     if attacker_p and defender_p:
                         battle.record_action(attacker_p, defender_p, ability, damage)
 
-                # Sync price updates for seeded battles
-                for p in participants:
-                    PricingEngine.update_creature_price(p.creature)
+                battle.refresh_from_db()
+                # Process ELO, wins/losses, price updates
+                BattleService.process_battle_result(battle)
 
-                created += 1
+                created_finished += 1
             except Exception as e:
                 self.stdout.write(self.style.WARNING(
                     f"    Battle failed ({data['creature_1']} vs {data['creature_2']}): {e}"
                 ))
 
-        self.stdout.write(f"  Demo battles: {created} created / {len(battles_data)} total")
+        # Create active battles: pick 2 pairs that are not on cooldown
+        created_active = 0
+        available = list(Creature.objects.filter(
+            currently_in_battle=False,
+            cooldown_expires_at__lte=timezone.now(),
+        ).order_by('?')[:4])
+
+        if len(available) >= 2:
+            try:
+                battle1 = BattleService.start_battle(available[0], available[1])
+                created_active += 1
+            except Exception as e:
+                self.stdout.write(self.style.WARNING(f"    Active battle 1 failed: {e}"))
+
+        if len(available) >= 4:
+            try:
+                battle2 = BattleService.start_battle(available[2], available[3])
+                created_active += 1
+            except Exception as e:
+                self.stdout.write(self.style.WARNING(f"    Active battle 2 failed: {e}"))
+
+        self.stdout.write(f"  Demo battles: {created_finished} finished, {created_active} active / {len(battles_data)} scripted")
 
     def _create_demo_incubations(self):
         from creature.models import Incubation
