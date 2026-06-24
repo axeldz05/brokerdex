@@ -14,34 +14,75 @@
     <div class="card mb-4">
         <div class="card-body">
             <div class="row align-items-center text-center">
-                <div class="col-5">
+                <div class="col-4">
                     {% if c1.small_icon_url %}
                         <img src="{{ c1.small_icon_url }}" alt="{{ c1.name }}" class="img-fluid" style="max-height: 100px;">
                     {% endif %}
                     <h4>{{ c1.name }}</h4>
                     <span class="badge" style="background: {{ c1.type|type_bg }}; color: {{ c1.type|type_color }};">{{ c1.get_type_display }}</span>
                     {% if battle.winner and battle.winner.pk == p1.pk %}
-                        <div class="text-success mt-2"><i class='bx bx-trophy'></i> Winner</div>
+                        <div class="text-success mt-1"><i class='bx bx-trophy'></i> Winner</div>
                     {% endif %}
+                    <div class="mt-2">
+                        <div class="small text-muted">Abilities:</div>
+                        {% for ab in c1.abilities.all %}
+                            <span class="badge bg-secondary me-1" title="{{ ab.description }}">{{ ab.name }}</span>
+                        {% empty %}
+                            <span class="text-muted small">None</span>
+                        {% endfor %}
+                    </div>
                 </div>
-                <div class="col-2">
+                <div class="col-4">
                     <div class="vs-text" style="font-size: 3rem; font-weight: 900; color: var(--accent-red);">VS</div>
                     <div class="badge bg-secondary">Turn {{ battle.current_turn }}</div>
                     <div class="small text-muted mt-1">{{ battle.get_status_display }}</div>
+                    {% if battle.status == 'active' %}
+                        <div class="mt-2 small">
+                            <span class="text-muted">Current turn: </span>
+                            <strong>
+                                {% if battle.current_turn|divisibleby:2 %}
+                                    {{ c2.name }}
+                                {% else %}
+                                    {{ c1.name }}
+                                {% endif %}
+                            </strong>
+                        </div>
+                        {% if battle.next_turn_at %}
+                            <div class="mt-1">
+                                <div class="small text-muted">Next action:</div>
+                                <div class="battle-countdown small fw-bold" data-next-turn="{{ battle.next_turn_at|date:'c' }}">--</div>
+                            </div>
+                        {% endif %}
+                    {% endif %}
+                    {% if battle.status == 'active' and actions_list %}
+                        {% with last_action=actions_list|last %}
+                        <div class="action-flash small mt-2" style="color: var(--accent-red);">
+                            Last: {{ last_action.actor.creature.name }} used {{ last_action.ability.name }}! (-{{ last_action.damage_dealt }} HP)
+                        </div>
+                        {% endwith %}
+                    {% endif %}
                 </div>
-                <div class="col-5">
+                <div class="col-4">
                     {% if c2.small_icon_url %}
                         <img src="{{ c2.small_icon_url }}" alt="{{ c2.name }}" class="img-fluid" style="max-height: 100px;">
                     {% endif %}
                     <h4>{{ c2.name }}</h4>
                     <span class="badge" style="background: {{ c2.type|type_bg }}; color: {{ c2.type|type_color }};">{{ c2.get_type_display }}</span>
                     {% if battle.winner and battle.winner.pk == p2.pk %}
-                        <div class="text-success mt-2"><i class='bx bx-trophy'></i> Winner</div>
+                        <div class="text-success mt-1"><i class='bx bx-trophy'></i> Winner</div>
                     {% endif %}
+                    <div class="mt-2">
+                        <div class="small text-muted">Abilities:</div>
+                        {% for ab in c2.abilities.all %}
+                            <span class="badge bg-secondary me-1" title="{{ ab.description }}">{{ ab.name }}</span>
+                        {% empty %}
+                            <span class="text-muted small">None</span>
+                        {% endfor %}
+                    </div>
                 </div>
             </div>
 
-            <div class="row mt-3">
+            <div class="row mt-4">
                 <div class="col-5">
                     <div class="d-flex justify-content-between">
                         <span>HP</span>
@@ -50,11 +91,21 @@
                     <div class="progress" style="height: 10px; background: var(--bg-secondary);">
                         {% widthratio p1.current_hp c1.hp 100 as hp_pct1 %}
                         <div class="progress-bar {% if hp_pct1 > 50 %}bg-success{% elif hp_pct1 > 25 %}bg-warning{% else %}bg-danger{% endif %}" 
-                             style="width: {{ hp_pct1 }}%">
+                             style="width: {% if hp_pct1 > 100 %}100{% else %}{{ hp_pct1 }}{% endif %}%">
                         </div>
                     </div>
                 </div>
-                <div class="col-2"></div>
+                <div class="col-2 text-center">
+                    {% if battle.status == 'active' and battle.creature_1_potential_change and battle.creature_2_potential_change %}
+                        <div class="small">
+                            <div class="text-muted">Valuation impact:</div>
+                            <div class="text-success">{{ c1.name }} win: ▲ +{{ battle.creature_1_potential_change }}%</div>
+                            <div class="text-danger">{{ c1.name }} lose: ▼ -{{ battle.creature_2_potential_change|floatformat:2 }}%</div>
+                            <div class="text-success mt-1">{{ c2.name }} win: ▲ +{{ battle.creature_2_potential_change }}%</div>
+                            <div class="text-danger">{{ c2.name }} lose: ▼ -{{ battle.creature_1_potential_change|floatformat:2 }}%</div>
+                        </div>
+                    {% endif %}
+                </div>
                 <div class="col-5">
                     <div class="d-flex justify-content-between">
                         <span>HP</span>
@@ -63,7 +114,7 @@
                     <div class="progress" style="height: 10px; background: var(--bg-secondary);">
                         {% widthratio p2.current_hp c2.hp 100 as hp_pct2 %}
                         <div class="progress-bar {% if hp_pct2 > 50 %}bg-success{% elif hp_pct2 > 25 %}bg-warning{% else %}bg-danger{% endif %}" 
-                             style="width: {{ hp_pct2 }}%">
+                             style="width: {% if hp_pct2 > 100 %}100{% else %}{{ hp_pct2 }}{% endif %}%">
                         </div>
                     </div>
                 </div>
@@ -71,7 +122,6 @@
         </div>
     </div>
 
-    <!-- Turn Timeline -->
     <div class="card">
         <div class="card-header">
             <h5 class="mb-0"><i class='bx bx-list-ul'></i> Battle Log</h5>
@@ -102,13 +152,13 @@
                                 </div>
                                 {% endif %}
                                 {% for inv in investments_list %}
-                                        {% if inv.turn_number == action.turn_number %}
-                                        <div class="text-info small mt-1">
-                                            <i class='bx bx-user-plus'></i> 
-                                            {{ inv.investor_count }} people invested in {{ inv.creature.name }} this turn!
-                                        </div>
-                                        {% endif %}
-                                    {% endfor %}
+                                    {% if inv.turn_number == action.turn_number %}
+                                    <div class="text-info small mt-1">
+                                        <i class='bx bx-user-plus'></i> 
+                                        {{ inv.investor_count }} people invested in {{ inv.creature.name }} this turn!
+                                    </div>
+                                    {% endif %}
+                                {% endfor %}
                             </div>
                         </div>
                     </div>
@@ -124,4 +174,22 @@
     </div>
     {% endwith %}{% endwith %}
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Countdown timer for next turn
+function updateCountdown() {
+    var el = document.querySelector('.battle-countdown');
+    if (!el) return;
+    var nextTurn = new Date(el.dataset.nextTurn).getTime();
+    var now = new Date().getTime();
+    var diff = Math.max(0, nextTurn - now);
+    var minutes = Math.floor(diff / 60000);
+    var seconds = Math.floor((diff % 60000) / 1000);
+    el.textContent = minutes + 'm ' + seconds + 's';
+}
+setInterval(updateCountdown, 1000);
+updateCountdown();
+</script>
 {% endblock %}
