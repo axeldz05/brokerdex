@@ -435,7 +435,7 @@ class BattleService:
                 'target': action.target.creature.name if action.target else 'Unknown',
                 'ability': action.ability.name if action.ability else 'Unknown',
                 'damage': action.damage_dealt,
-                'description': action.description,
+                'description': f"{action.actor.creature.name if action.actor else 'Unknown'} used {action.ability.name if action.ability else 'Unknown'}!",
                 'timestamp': action.timestamp.isoformat(),
             })
 

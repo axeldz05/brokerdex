@@ -294,7 +294,6 @@ class Battle(models.Model):
     current_turn = models.PositiveIntegerField(default=1)
     winner = models.ForeignKey('BattleParticipant', null=True, blank=True, on_delete=models.SET_NULL, related_name='won_battles')
     
-    battle_log = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -325,7 +324,6 @@ class Battle(models.Model):
                 target_participant.current_hp = 0
             target_participant.save(update_fields=['current_hp'])
             
-            description = f"{actor_participant.creature.name} used {ability.name}!"
             BattleAction.objects.create(
                 battle=self,
                 turn_number=self.current_turn,
@@ -333,7 +331,6 @@ class Battle(models.Model):
                 target=target_participant,
                 ability=ability,
                 damage_dealt=damage,
-                description=description
             )
             
             if target_participant.current_hp == 0:
@@ -369,7 +366,6 @@ class BattleAction(models.Model):
     is_item = models.BooleanField(default=False)
     
     damage_dealt = models.IntegerField(default=0)
-    description = models.CharField(max_length=255)
     timestamp = models.DateTimeField(auto_now_add=True)
 
     class Meta:
