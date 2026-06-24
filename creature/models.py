@@ -7,6 +7,7 @@ from django.db.models.signals import m2m_changed
 from django.dispatch import receiver
 from django.utils import timezone
 from django.core.exceptions import ValidationError
+from account.models import Account
 
 def creature_image_upload_path(instance, filename):
     ext = filename.split('.')[-1]
@@ -336,6 +337,90 @@ class BattleAction(models.Model):
     class Meta:
         ordering = ['turn_number', 'timestamp']
 
+
+
+class EggTemplate(models.Model):
+    """
+    Defines a type of egg that users can purchase.
+    Each egg has a price, hatch duration, and a pool of possible creatures.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=100, unique=True)
+    description = models.TextField(blank=True)
+    price = models.DecimalField(max_digits=12, decimal_places=2)
+    hatch_duration = models.DurationField(
+        help_text="Real time until the egg hatches (e.g. 1 hour)"
+    )
+    creature_pool = models.ManyToManyField(
+        Creature,
+        related_name='egg_templates',
+        help_text="Possible creatures that can hatch from this egg"
+    )
+    image = models.ImageField(
+        upload_to=creature_image_upload_path,
+        blank=True, null=True,
+    )
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return f"{self.name} (${self.price})"
+
+
+class Incubation(models.Model):
+    """
+    Tracks a user's egg purchase and hatching process.
+    """
+    class Status(models.TextChoices):
+        INCUBATING = 'INCUBATING', 'Incubating'
+        HATCHED = 'HATCHED', 'Hatched'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        Account,
+        on_delete=models.CASCADE,
+        related_name='incubations'
+    )
+    egg_template = models.ForeignKey(
+        EggTemplate,
+        on_delete=models.CASCADE,
+        related_name='incubations'
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.INCUBATING,
+    )
+    purchased_at = models.DateTimeField(auto_now_add=True)
+    hatches_at = models.DateTimeField()
+    hatched_at = models.DateTimeField(null=True, blank=True)
+    hatched_creature = models.ForeignKey(
+        Creature,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='hatched_from'
+    )
+    celery_task_id = models.CharField(
+        max_length=255,
+        null=True, blank=True,
+        help_text="Celery task ID for the hatch timer"
+    )
+
+    class Meta:
+        ordering = ['-purchased_at']
+
+    def __str__(self):
+        return f"{self.user.username} — {self.egg_template.name} [{self.status}]"
+
+    @property
+    def time_remaining(self):
+        if self.status == self.Status.HATCHED:
+            return 0
+        remaining = self.hatches_at - timezone.now()
+        return max(remaining.total_seconds(), 0)
 
 
 @receiver(m2m_changed, sender=Creature.abilities.through)

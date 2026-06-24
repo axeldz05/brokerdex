@@ -1,0 +1,210 @@
+{% extends "layout.html" %}
+{% load humanize %}
+
+{% block content %}
+<style>
+    :root {
+        --bg-primary: #0d1117;
+        --bg-secondary: #161b22;
+        --bg-card: #1c2128;
+        --border-color: #30363d;
+        --text-primary: #e6edf3;
+        --text-secondary: #8b949e;
+        --accent-green: #3fb950;
+        --accent-red: #f85149;
+        --accent-blue: #58a6ff;
+        --accent-purple: #bc8cff;
+        --accent-yellow: #d29922;
+    }
+
+    .incubation-page {
+        background: var(--bg-primary);
+        min-height: 100vh;
+        color: var(--text-primary);
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    .page-header {
+        background: linear-gradient(135deg, var(--bg-secondary), var(--bg-card));
+        border-bottom: 1px solid var(--border-color);
+        padding: 2rem 0;
+    }
+
+    .page-header h1 {
+        font-size: 1.75rem;
+        font-weight: 700;
+        background: linear-gradient(135deg, var(--accent-purple), var(--accent-blue));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+
+    .egg-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 16px;
+        overflow: hidden;
+        transition: transform 0.2s, box-shadow 0.2s;
+        height: 100%;
+    }
+
+    .egg-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    }
+
+    .egg-card .card-body {
+        padding: 1.5rem;
+    }
+
+    .egg-icon {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, var(--bg-secondary), var(--border-color));
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 1rem;
+        font-size: 2rem;
+    }
+
+    .egg-price {
+        font-size: 1.5rem;
+        font-weight: 800;
+        color: var(--accent-green);
+    }
+
+    .btn-purchase {
+        background: linear-gradient(135deg, var(--accent-purple), var(--accent-blue));
+        border: none;
+        border-radius: 8px;
+        padding: 0.6rem 1.5rem;
+        font-weight: 600;
+        color: #fff;
+        transition: opacity 0.2s;
+        width: 100%;
+    }
+
+    .btn-purchase:hover {
+        opacity: 0.9;
+        color: #fff;
+    }
+
+    .incubation-item {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 1rem 1.25rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .progress-bar-custom {
+        background: var(--bg-secondary);
+        border-radius: 8px;
+        height: 8px;
+        overflow: hidden;
+    }
+
+    .progress-fill {
+        height: 100%;
+        background: linear-gradient(90deg, var(--accent-purple), var(--accent-blue));
+        border-radius: 8px;
+        transition: width 1s;
+    }
+
+    .badge-hatching {
+        background: rgba(88, 166, 255, 0.15);
+        color: var(--accent-blue);
+        padding: 0.25rem 0.75rem;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+</style>
+
+<div class="incubation-page">
+    <div class="page-header">
+        <div class="container">
+            <h1 class="mb-1">Incubation Lab</h1>
+            <p style="color: var(--text-secondary);">
+                Purchase eggs and hatch new creatures to add to your portfolio.
+            </p>
+            <div class="mt-3">
+                <a href="{% url 'creature:incubation_status' %}" class="btn btn-sm btn-outline-secondary">
+                    My Incubations
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="container py-4">
+        <!-- Active Incubations -->
+        {% if active_incubations %}
+        <div class="mb-5">
+            <h5 class="mb-3" style="color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.85rem;">
+                <i class="bi bi-egg-fill me-2"></i>Currently Incubating
+            </h5>
+            {% for inc in active_incubations %}
+            <div class="incubation-item">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div>
+                        <strong>{{ inc.egg_template.name }}</strong>
+                        <span class="badge-hatching ms-2">Incubating</span>
+                    </div>
+                    <small style="color: var(--text-secondary);">
+                        Hatches {{ inc.hatches_at|naturaltime }}
+                    </small>
+                </div>
+                <div class="progress-bar-custom">
+                    <div class="progress-fill" style="width: 50%;"></div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Egg Shop -->
+        <h5 class="mb-3" style="color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.85rem;">
+            <i class="bi bi-bag me-2"></i>Available Eggs
+        </h5>
+
+        {% if eggs %}
+        <div class="row g-4">
+            {% for egg in eggs %}
+            <div class="col-lg-4 col-md-6">
+                <div class="egg-card">
+                    <div class="card-body text-center">
+                        <div class="egg-icon">
+                            <i class="bi bi-egg"></i>
+                        </div>
+                        <h5 class="fw-bold mb-1">{{ egg.name }}</h5>
+                        <p class="mb-2" style="color: var(--text-secondary); font-size: 0.85rem;">
+                            {{ egg.description }}
+                        </p>
+                        <div class="mb-2">
+                            <span style="color: var(--text-secondary); font-size: 0.8rem;">
+                                Duration: {{ egg.hatch_duration }}
+                            </span>
+                        </div>
+                        <div class="egg-price mb-3">${{ egg.price|floatformat:2 }}</div>
+                        <form method="POST" action="{% url 'creature:purchase_egg' egg.id %}">
+                            {% csrf_token %}
+                            <button type="submit" class="btn-purchase">
+                                <i class="bi bi-cart me-1"></i>Purchase
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-center py-5" style="color: var(--text-secondary);">
+            <i class="bi bi-egg" style="font-size: 3rem; display: block; margin-bottom: 1rem;"></i>
+            <p>No eggs available right now. Check back later!</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

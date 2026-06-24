@@ -1,6 +1,7 @@
 from celery import shared_task
 from django.utils import timezone
-from .models import Creature, Battle
+from .models import Creature, Battle, Incubation
+from .services import IncubationService, TrainingService
 import random
 
 @shared_task
@@ -72,3 +73,55 @@ def process_battle_turn(battle_id):
 
         winner_name = winner_participant.creature.name if winner_participant else "Draw"
         return f"Battle {battle.id} has finished! Winner: {winner_name}"
+
+
+@shared_task
+def hatch_egg(incubation_id):
+    """
+    Celery task: hatch an egg when the timer expires.
+    Called asynchronously via ETA scheduling.
+    """
+    try:
+        incubation = Incubation.objects.get(pk=incubation_id)
+    except Incubation.DoesNotExist:
+        return f"Incubation {incubation_id} not found."
+
+    try:
+        IncubationService.hatch_egg(incubation)
+        return (
+            f"Egg {incubation.egg_template.name} hatched! "
+            f"Got {incubation.hatched_creature.name}"
+        )
+    except Exception as e:
+        return f"Failed to hatch egg {incubation_id}: {e}"
+
+
+@shared_task
+def complete_training(creature_id, portfolio_id):
+    """
+    Celery task: complete creature training, boost stats.
+    """
+    try:
+        creature = Creature.objects.get(pk=creature_id)
+    except Creature.DoesNotExist:
+        return f"Creature {creature_id} not found."
+
+    from trading.models import Portfolio
+    try:
+        portfolio = Portfolio.objects.get(pk=portfolio_id)
+    except Portfolio.DoesNotExist:
+        return f"Portfolio {portfolio_id} not found."
+
+    boost = TrainingService.get_possible_stat_boosts(creature)
+    stat = random.choice(['hp', 'attack', 'defense', 'special_attack', 'special_defense', 'speed'])
+
+    setattr(creature, stat, getattr(creature, stat) + boost)
+    creature.save(update_fields=[stat])
+
+    from trading.services import PricingEngine
+    PricingEngine.update_creature_price(creature)
+
+    return (
+        f"{creature.name} trained: {stat} +{boost}. "
+        f"New price: ${creature.current_price}"
+    )
