@@ -95,15 +95,30 @@
                         </div>
                     </div>
                 </div>
-                <div class="col-2 text-center">
+                <div class="col-4 text-center">
                     {% if battle.status == 'active' and battle.creature_1_potential_change and battle.creature_2_potential_change %}
                         <div class="small">
-                            <div class="text-muted">Valuation impact:</div>
-                            <div class="text-success">{{ c1.name }} win: ▲ +{{ battle.creature_1_potential_change }}%</div>
-                            <div class="text-danger">{{ c1.name }} lose: ▼ -{{ battle.creature_2_potential_change|floatformat:2 }}%</div>
-                            <div class="text-success mt-1">{{ c2.name }} win: ▲ +{{ battle.creature_2_potential_change }}%</div>
-                            <div class="text-danger">{{ c2.name }} lose: ▼ -{{ battle.creature_1_potential_change|floatformat:2 }}%</div>
+                            <div class="text-muted mb-1">Valuation impact:</div>
+                            <div class="text-success">{{ c1.name }} win: ▲ +{{ battle.creature_1_potential_change }}% (+${{ c1.current_price|percent_of:battle.creature_1_potential_change }})</div>
+                            <div class="text-danger">{{ c1.name }} lose: ▼ -{{ battle.creature_2_potential_change|floatformat:2 }}% (-${{ c1.current_price|percent_of:battle.creature_2_potential_change }})</div>
+                            <div class="text-success mt-1">{{ c2.name }} win: ▲ +{{ battle.creature_2_potential_change }}% (+${{ c2.current_price|percent_of:battle.creature_2_potential_change }})</div>
+                            <div class="text-danger">{{ c2.name }} lose: ▼ -{{ battle.creature_1_potential_change|floatformat:2 }}% (-${{ c2.current_price|percent_of:battle.creature_1_potential_change }})</div>
                         </div>
+                    {% elif battle.status == 'finished' %}
+                        <div class="small">
+                            <div class="text-muted mb-1">Result:</div>
+                            {% for change in price_changes %}
+                                <div class="{% if change.pct < 0 %}text-danger{% else %}text-success{% endif %} mt-1">
+                                    {% if change.won %}🏆{% endif %}
+                                    <strong>{{ change.name }}</strong>:
+                                    {% if change.pct >= 0 %}▲{% else %}▼{% endif %}
+                                    {% if change.pct >= 0 %}+{% endif %}{{ change.pct }}%
+                                    ({% if change.abs >= 0 %}+{% endif %}${{ change.abs }})
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <div class="text-muted small">No valuation data available.</div>
                     {% endif %}
                 </div>
                 <div class="col-5">

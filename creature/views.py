@@ -149,11 +149,33 @@ def battle_detail_view(request, battle_id):
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return _battle_detail_json(battle)
 
+    # Compute actual price changes for finished battles
+    price_changes = []
+    participants_list = list(battle.participants.all())
+    if battle.status == 'finished':
+        from decimal import Decimal as D
+        for p in participants_list:
+            c = p.creature
+            prev = c.previous_close or c.current_price
+            if prev and prev != 0:
+                pct = ((c.current_price - prev) / prev * 100).quantize(D('0.01'))
+                abs_val = (c.current_price - prev).quantize(D('0.01'))
+            else:
+                pct = D('0')
+                abs_val = D('0')
+            price_changes.append({
+                'name': c.name,
+                'pct': pct,
+                'abs': abs_val,
+                'won': bool(battle.winner and battle.winner.pk == p.pk),
+            })
+
     return render(request, 'creature/battle_detail.html', {
         'battle': battle,
-        'participants_list': list(battle.participants.all()),
+        'participants_list': participants_list,
         'actions_list': list(battle.actions.all()),
         'investments_list': list(battle.investments.all()),
+        'price_changes': price_changes,
     })
 
 

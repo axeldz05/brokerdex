@@ -1,4 +1,5 @@
 from django import template
+from decimal import Decimal
 
 register = template.Library()
 
@@ -56,3 +57,12 @@ def type_color(type_name):
 def type_bg(type_name):
     """Returns a semi-transparent background color for a type badge."""
     return TYPE_BG_COLORS.get(type_name.lower(), 'rgba(168, 168, 120, 0.15)')
+
+
+@register.filter
+def percent_of(value, percent):
+    """Returns value * percent / 100 as Decimal rounded to 2 places."""
+    try:
+        return (Decimal(str(value)) * Decimal(str(percent)) / 100).quantize(Decimal('0.01'))
+    except:
+        return Decimal('0')

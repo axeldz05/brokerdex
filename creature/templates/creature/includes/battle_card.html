@@ -86,14 +86,14 @@
                     {% if battle.status == 'active' %}
                         <div class="col-6">
                             {% if battle.creature_1_potential_change %}
-                                <span class="text-success">Win: ▲ +{{ battle.creature_1_potential_change }}% (${{ c1.current_price|floatformat:2 }})</span><br>
-                                <span class="text-danger">Lose: ▼ -{{ battle.creature_2_potential_change|floatformat:2 }}%</span>
+                                <span class="text-success">Win: ▲ +{{ battle.creature_1_potential_change }}% (+${{ c1.current_price|percent_of:battle.creature_1_potential_change }})</span><br>
+                                <span class="text-danger">Lose: ▼ -{{ battle.creature_2_potential_change|floatformat:2 }}% (-${{ c1.current_price|percent_of:battle.creature_2_potential_change }})</span>
                             {% endif %}
                         </div>
                         <div class="col-6">
                             {% if battle.creature_2_potential_change %}
-                                <span class="text-success">Win: ▲ +{{ battle.creature_2_potential_change }}% (${{ c2.current_price|floatformat:2 }})</span><br>
-                                <span class="text-danger">Lose: ▼ -{{ battle.creature_1_potential_change|floatformat:2 }}%</span>
+                                <span class="text-success">Win: ▲ +{{ battle.creature_2_potential_change }}% (+${{ c2.current_price|percent_of:battle.creature_2_potential_change }})</span><br>
+                                <span class="text-danger">Lose: ▼ -{{ battle.creature_1_potential_change|floatformat:2 }}% (-${{ c2.current_price|percent_of:battle.creature_1_potential_change }})</span>
                             {% endif %}
                         </div>
                     {% else %}
