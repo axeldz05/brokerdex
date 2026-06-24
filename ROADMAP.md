@@ -100,16 +100,20 @@ Un sistema de emparejamiento de órdenes *Peer-to-Peer* (P2P) simplificado.
 
 ### Fase 1: Consolidación del Core Financiero (Sprints 1-2)
 
-* [ ] Diseñar el modelo de datos para el `OrderBook`, `Trade`, y `PriceHistory`.
-* [ ] Desarrollar los endpoints de la API para publicar órdenes de compra/venta límite y de mercado.
-* [ ] Implementar la lógica matemática del **Dynamic Pricing Engine** inicial (fluctuación aleatoria controlada).
+* [x] Diseñar el modelo de datos para el `OrderBook`, `Trade`, y `PriceHistory`.
+* [x] Desarrollar los endpoints de la API para publicar órdenes de compra/venta límite y de mercado.
+* [x] Implementar la lógica matemática del **Dynamic Pricing Engine** inicial (fluctuación aleatoria controlada).
+    * Tests de integración: cobertura completa con 14 tests end-to-end (HTTP → view → service → DB).
 
 ### Fase 2: Automatización y Procesos de Fondo (Sprints 3-4)
 
-* [ ] Configurar Celery y Redis en el entorno de desarrollo (Docker recomendado).
-* [ ] Desarrollar el script del **Battle Engine** (lógica de combate rápida basada en stats).
-* [ ] Crear las tareas programadas (Celery Beats) para las batallas automáticas cada 10 minutos.
-* [ ] Desarrollar los servicios asíncronos de Incubación y Entrenamiento.
+* [x] Configurar Celery y Redis en el entorno de desarrollo (Docker recomendado).
+    * `brokerdex/celery.py` + `brokerdex/__init__.py` con app Celery.
+* [x] Desarrollar el script del **Battle Engine** (lógica de combate rápida basada en stats).
+    * `matchmake_random_battle()` / `process_battle_turn()` en `creature/tasks.py`.
+* [x] Crear las tareas programadas (Celery Beats) para las batallas automáticas cada 5 minutos.
+* [ ] Desarrollar los servicios asíncronos de Incubación.
+* [ ] Desarrollar los servicios asíncronos de Entrenamiento.
 
 ### Fase 3: Analytics, Visualización y UI Premium (Sprints 5-6)
 

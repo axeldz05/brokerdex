@@ -1,0 +1,144 @@
+{% extends "layout.html" %}
+{% load humanize %}
+
+{% block content %}
+<style>
+    :root {
+        --bg-primary: #0d1117;
+        --bg-secondary: #161b22;
+        --bg-card: #1c2128;
+        --border-color: #30363d;
+        --text-primary: #e6edf3;
+        --text-secondary: #8b949e;
+        --accent-green: #3fb950;
+        --accent-red: #f85149;
+        --accent-blue: #58a6ff;
+        --accent-purple: #bc8cff;
+    }
+
+    .status-page {
+        background: var(--bg-primary);
+        min-height: 100vh;
+        color: var(--text-primary);
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    .page-header {
+        background: linear-gradient(135deg, var(--bg-secondary), var(--bg-card));
+        border-bottom: 1px solid var(--border-color);
+        padding: 2rem 0;
+    }
+
+    .page-header h1 {
+        font-size: 1.75rem;
+        font-weight: 700;
+        background: linear-gradient(135deg, var(--accent-green), var(--accent-blue));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+
+    .inc-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 1.25rem;
+        margin-bottom: 0.75rem;
+        transition: border-color 0.2s;
+    }
+
+    .inc-card:hover {
+        border-color: var(--accent-blue);
+    }
+
+    .status-incubating {
+        color: var(--accent-blue);
+    }
+
+    .status-hatched {
+        color: var(--accent-green);
+    }
+
+    .badge-status {
+        display: inline-block;
+        padding: 0.2rem 0.6rem;
+        border-radius: 6px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+
+    .badge-incubating {
+        background: rgba(88, 166, 255, 0.12);
+        color: var(--accent-blue);
+    }
+
+    .badge-hatched {
+        background: rgba(63, 185, 80, 0.12);
+        color: var(--accent-green);
+    }
+</style>
+
+<div class="status-page">
+    <div class="page-header">
+        <div class="container">
+            <h1 class="mb-1">My Incubations</h1>
+            <p style="color: var(--text-secondary);">
+                Track your eggs and hatched creatures.
+            </p>
+            <div class="mt-3">
+                <a href="{% url 'creature:incubation_shop' %}" class="btn btn-sm btn-outline-secondary">
+                    Back to Shop
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="container py-4">
+        {% if incubations %}
+            {% for inc in incubations %}
+            <div class="inc-card">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong>{{ inc.egg_template.name }}</strong>
+                        {% if inc.status == 'INCUBATING' %}
+                            <span class="badge-status badge-incubating ms-2">Incubating</span>
+                        {% else %}
+                            <span class="badge-status badge-hatched ms-2">Hatched!</span>
+                        {% endif %}
+                    </div>
+                    <div class="text-end">
+                        {% if inc.status == 'INCUBATING' %}
+                            <small style="color: var(--text-secondary);">
+                                Hatches {{ inc.hatches_at|naturaltime }}
+                            </small>
+                        {% else %}
+                            <small style="color: var(--accent-green);">
+                                Hatched {{ inc.hatched_at|naturaltime }}
+                            </small>
+                        {% endif %}
+                    </div>
+                </div>
+                {% if inc.status == 'HATCHED' and inc.hatched_creature %}
+                <div class="mt-2" style="color: var(--text-secondary); font-size: 0.9rem;">
+                    <i class="bi bi-star me-1" style="color: var(--accent-yellow);"></i>
+                    {{ inc.hatched_creature.name }}
+                    <span class="ms-3" style="color: var(--text-secondary);">
+                        Value: ${{ inc.hatched_creature.current_price|floatformat:2 }}
+                    </span>
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="text-center py-5" style="color: var(--text-secondary);">
+                <i class="bi bi-egg" style="font-size: 3rem; display: block; margin-bottom: 1rem;"></i>
+                <p>No incubations yet.</p>
+                <a href="{% url 'creature:incubation_shop' %}" class="btn btn-primary mt-2">
+                    Purchase an Egg
+                </a>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

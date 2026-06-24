@@ -171,6 +171,21 @@
 
         <main id="main" class="mt-5 pt-5">
 
+            {% if messages %}
+            <div class="container mt-3">
+                {% for message in messages %}
+                {% with message.level_tag as tag %}
+                <div class="alert alert-{% if tag == 'error' %}danger{% elif tag == 'debug' %}secondary{% else %}{{ tag }}{% endif %} alert-dismissible fade show"
+                     role="alert"
+                     style="background: var(--bg-card); border-color: var(--border-color); color: var(--text-primary);">
+                    {{ message }}
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="alert"></button>
+                </div>
+                {% endwith %}
+                {% endfor %}
+            </div>
+            {% endif %}
+
             {% block content %}
             {% endblock %}
 
