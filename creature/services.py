@@ -307,7 +307,7 @@ class BattleService:
     def get_active_battles():
         """Return active battles with participant data, ordered by turn urgency."""
         return Battle.objects.filter(status='active').prefetch_related(
-            'participants__creature'
+            'participants__creature',
         ).order_by('next_turn_at')
 
     @staticmethod

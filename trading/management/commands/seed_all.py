@@ -263,9 +263,12 @@ class Command(BaseCommand):
                 battle = BattleService.start_battle(c1, c2)
                 participants = list(battle.participants.select_related('creature').all())
 
-                # Set high HP so all demo turns can execute
+                # Track damage per creature to set realistic final HP
+                damage_taken = {c1.name: 0, c2.name: 0}
+
+                # Give enough buffer HP so scripted turns don't kill prematurely
                 for p in participants:
-                    p.current_hp = 999
+                    p.current_hp = 500
                     p.save(update_fields=['current_hp'])
 
                 for turn_data in data['log']:
@@ -280,11 +283,20 @@ class Command(BaseCommand):
                         (p for p in participants if p.creature.name != attacker_name), None
                     )
                     ability = get_or_none(Ability, name=ability_name)
+                    victim_name = c2.name if attacker_name == c1.name else c1.name
+                    damage_taken[victim_name] += damage
 
                     if attacker_p and defender_p:
                         battle.record_action(attacker_p, defender_p, ability, damage)
 
                 battle.refresh_from_db()
+                # Set final HP to realistic values (actual max HP minus damage taken)
+                for p in participants:
+                    dmg = damage_taken.get(p.creature.name, 0)
+                    remaining = max(p.creature.hp - dmg, 0)
+                    p.current_hp = remaining
+                    p.save(update_fields=['current_hp'])
+
                 # Process ELO, wins/losses, price updates
                 BattleService.process_battle_result(battle)
 
