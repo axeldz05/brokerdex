@@ -6,7 +6,8 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 
 from .models import EggTemplate, Incubation, Creature
-from .services import IncubationService
+from .services import IncubationService, TrainingService
+from trading.models import Portfolio
 
 
 @login_required
@@ -61,3 +62,33 @@ def incubation_status_view(request):
     return render(request, 'creature/incubation_status.html', {
         'incubations': incubations,
     })
+
+
+@login_required
+def train_creature_view(request, portfolio_id):
+    """
+    Initiate training for a creature in the user's portfolio.
+    POST only: deducts training fee and schedules async stat boost.
+    """
+    if request.method != 'POST':
+        return redirect('trading:portfolio')
+
+    portfolio = get_object_or_404(
+        Portfolio, pk=portfolio_id, owner=request.user
+    )
+    creature = portfolio.creature
+    cost = TrainingService.get_training_cost(creature)
+
+    try:
+        task_id = TrainingService.train_creature(
+            request.user, creature, portfolio
+        )
+        messages.success(
+            request,
+            f"Training initiated for {creature.name}! Cost: ${cost}. "
+            f"Stats will boost in ~30 seconds."
+        )
+    except ValidationError as e:
+        messages.error(request, str(e.message if hasattr(e, 'message') else e))
+
+    return redirect('trading:portfolio')
