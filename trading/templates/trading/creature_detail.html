@@ -479,21 +479,6 @@
                         </p>
                     {% endif %}
                 </div>
-                    <h3>Recent Trades</h3>
-                    {% for trade in recent_trades %}
-                    <div class="trade-row">
-                        <span style="color: var(--text-secondary);">
-                            {{ trade.executed_at|date:"M d, H:i" }}
-                        </span>
-                        <span>×{{ trade.quantity|floatformat:2 }}</span>
-                        <span class="fw-bold">${{ trade.price_per_unit|floatformat:2 }}</span>
-                    </div>
-                    {% empty %}
-                    <p style="color: var(--text-secondary); text-align: center; padding: 1rem;">
-                        No trades yet for this creature.
-                    </p>
-                    {% endfor %}
-                </div>
             </div>
 
             <!-- Right column: Buy/Sell + Holdings + Orders -->
@@ -653,6 +638,24 @@
                     {% endfor %}
                 </div>
                 {% endif %}
+
+                <!-- Recent Trades -->
+                <div class="card-dark mt-4">
+                    <h3>Recent Trades</h3>
+                    {% for trade in recent_trades %}
+                    <div class="trade-row">
+                        <span style="color: var(--text-secondary);">
+                            {{ trade.executed_at|date:"M d, H:i" }}
+                        </span>
+                        <span>×{{ trade.quantity|floatformat:2 }}</span>
+                        <span class="fw-bold">${{ trade.price_per_unit|floatformat:2 }}</span>
+                    </div>
+                    {% empty %}
+                    <p style="color: var(--text-secondary); text-align: center; padding: 1rem;">
+                        No trades yet for this creature.
+                    </p>
+                    {% endfor %}
+                </div>
             </div>
         </div>
     </div>
