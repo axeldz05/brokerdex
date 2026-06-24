@@ -7,8 +7,8 @@ from django.core.exceptions import ValidationError
 
 from account.models import Account
 from creature.models import Creature, Ability
-from .models import Portfolio, Order, Trade, PriceHistory, MarketIndex
-from .services import TradingEngine, PricingEngine, MarketIndicesService
+from .models import Portfolio, Order, Trade, PriceHistory, MarketIndex, Notification
+from .services import TradingEngine, PricingEngine, MarketIndicesService, VolatilityService
 
 
 class TradingIntegrationTests(TestCase):
@@ -333,3 +333,141 @@ class MarketIndicesIntegrationTests(TestCase):
         self.assertIn('indices', data)
         self.assertGreaterEqual(len(data['indices']), 1)
         self.assertEqual(data['indices'][0]['type'], 'fire')
+        self.assertEqual(data['indices'][0]['type'], 'fire')
+
+
+class VolatilityAlertIntegrationTests(TestCase):
+    """Integration tests for volatility alerts and circuit breakers."""
+
+    def setUp(self):
+        self.client = Client()
+        self.user = Account.objects.create_user(
+            username='vol_user', email='vol@test.com', password='testpass123'
+        )
+        self.user.balance_cents = 100_000_00
+        self.user.save()
+
+        self.ability = Ability.objects.create(
+            name='Tackle', ability_type='normal',
+            damage_class='physical', power=40,
+        )
+
+        self.creature = Creature.objects.create(
+            name='VolatileMon', type='fire',
+            current_price=Decimal('100.00'),
+            previous_close=Decimal('100.00'),
+            hp=50, attack=50, defense=50,
+            battle_cooldown=timedelta(hours=1),
+            description='A very volatile creature.',
+        )
+        self.creature.abilities.add(self.ability)
+
+        from trading.models import Portfolio
+        self.portfolio = Portfolio.objects.create(
+            owner=self.user,
+            creature=self.creature,
+            quantity=Decimal('10'),
+            average_cost=Decimal('100.00'),
+        )
+
+    def _login(self):
+        self.client.login(username='vol_user', password='testpass123')
+
+    def test_no_alert_for_small_change(self):
+        self.creature.current_price = Decimal('105.00')
+        self.creature.previous_close = Decimal('100.00')
+        self.creature.save()
+
+        VolatilityService.check_volatility(self.creature)
+
+        self.assertFalse(self.creature.is_trading_halted)
+        self.assertEqual(
+            Notification.objects.filter(user=self.user).count(), 0
+        )
+
+    def test_alert_for_large_change(self):
+        self.creature.current_price = Decimal('120.00')
+        self.creature.previous_close = Decimal('100.00')
+        self.creature.save()
+
+        VolatilityService.check_volatility(self.creature)
+
+        self.creature.refresh_from_db()
+        self.assertTrue(self.creature.is_trading_halted)
+        self.assertIsNotNone(self.creature.circuit_breaker_expires_at)
+
+        notif = Notification.objects.get(user=self.user)
+        self.assertEqual(
+            notif.notification_type, Notification.Type.VOLATILITY_ALERT
+        )
+        self.assertIn('surged', notif.title)
+
+    def test_alert_for_sharp_drop(self):
+        self.creature.current_price = Decimal('80.00')
+        self.creature.previous_close = Decimal('100.00')
+        self.creature.save()
+
+        VolatilityService.check_volatility(self.creature)
+
+        notif = Notification.objects.get(user=self.user)
+        self.assertIn('plummeted', notif.title)
+
+    def test_circuit_breaker_blocks_trading(self):
+        self._login()
+        self.creature.current_price = Decimal('120.00')
+        self.creature.previous_close = Decimal('100.00')
+        self.creature.save()
+
+        VolatilityService.check_volatility(self.creature)
+
+        with self.assertRaises(ValidationError) as ctx:
+            TradingEngine.execute_market_buy(
+                self.user, self.creature, Decimal('1')
+            )
+        self.assertIn('temporarily halted', str(ctx.exception))
+
+    def test_notification_page_shows_alerts(self):
+        self._login()
+
+        Notification.objects.create(
+            user=self.user,
+            notification_type=Notification.Type.VOLATILITY_ALERT,
+            title='Test Alert',
+            message='Test message',
+        )
+
+        response = self.client.get(reverse('trading:notifications'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Test Alert')
+        self.assertContains(response, 'Test message')
+
+    def test_mark_notification_as_read(self):
+        self._login()
+
+        notif = Notification.objects.create(
+            user=self.user,
+            notification_type=Notification.Type.VOLATILITY_ALERT,
+            title='Read Test',
+            message='Mark me as read',
+        )
+
+        self.client.post(reverse('trading:notifications'), {
+            'notification_id': notif.pk,
+        })
+
+        notif.refresh_from_db()
+        self.assertTrue(notif.is_read)
+
+    def test_notifications_api(self):
+        self._login()
+
+        Notification.objects.create(
+            user=self.user,
+            notification_type=Notification.Type.VOLATILITY_ALERT,
+            title='API Test',
+            message='Test',
+        )
+
+        response = self.client.get(reverse('trading:notifications_api'))
+        data = response.json()
+        self.assertEqual(data['unread_count'], 1)

@@ -1,0 +1,143 @@
+{% extends "layout.html" %}
+{% load humanize %}
+
+{% block content %}
+<style>
+    :root {
+        --bg-primary: #0d1117;
+        --bg-secondary: #161b22;
+        --bg-card: #1c2128;
+        --border-color: #30363d;
+        --text-primary: #e6edf3;
+        --text-secondary: #8b949e;
+        --accent-green: #3fb950;
+        --accent-red: #f85149;
+        --accent-blue: #58a6ff;
+        --accent-yellow: #d29922;
+    }
+
+    .notif-page {
+        background: var(--bg-primary);
+        min-height: 100vh;
+        color: var(--text-primary);
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    .page-header {
+        background: linear-gradient(135deg, var(--bg-secondary), var(--bg-card));
+        border-bottom: 1px solid var(--border-color);
+        padding: 2rem 0;
+    }
+
+    .page-header h1 {
+        font-size: 1.75rem;
+        font-weight: 700;
+        background: linear-gradient(135deg, var(--accent-yellow), var(--accent-blue));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+
+    .notif-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 1rem 1.25rem;
+        margin-bottom: 0.5rem;
+        transition: border-color 0.2s;
+    }
+
+    .notif-card:hover {
+        border-color: var(--accent-blue);
+    }
+
+    .notif-card.unread {
+        border-left: 3px solid var(--accent-blue);
+    }
+
+    .notif-type {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        font-weight: 600;
+    }
+
+    .notif-type.volatility { color: var(--accent-red); }
+    .notif-type.battle { color: var(--accent-yellow); }
+    .notif-type.incubation { color: var(--accent-purple); }
+    .notif-type.training { color: var(--accent-green); }
+
+    .notif-time {
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+    }
+
+    .btn-mark-read {
+        background: none;
+        border: 1px solid var(--border-color);
+        color: var(--text-secondary);
+        border-radius: 6px;
+        padding: 0.25rem 0.6rem;
+        font-size: 0.75rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .btn-mark-read:hover {
+        border-color: var(--accent-blue);
+        color: var(--accent-blue);
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 4rem 2rem;
+        color: var(--text-secondary);
+    }
+</style>
+
+<div class="notif-page">
+    <div class="page-header">
+        <div class="container">
+            <h1 class="mb-1">
+                Notifications
+                {% if unread_count %}
+                <span class="badge bg-danger ms-2">{{ unread_count }}</span>
+                {% endif %}
+            </h1>
+        </div>
+    </div>
+
+    <div class="container py-4">
+        {% if notifications %}
+            {% for notif in notifications %}
+            <div class="notif-card {% if not notif.is_read %}unread{% endif %}">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div class="flex-grow-1">
+                        <div class="notif-type {{ notif.notification_type|lower }}">
+                            {{ notif.get_notification_type_display }}
+                        </div>
+                        <strong class="d-block mt-1">{{ notif.title }}</strong>
+                        <p class="mb-1" style="color: var(--text-secondary); font-size: 0.875rem;">
+                            {{ notif.message }}
+                        </p>
+                        <div class="notif-time">{{ notif.created_at|naturaltime }}</div>
+                    </div>
+                    {% if not notif.is_read %}
+                    <form method="POST" action="{% url 'trading:notifications' %}" class="ms-3">
+                        {% csrf_token %}
+                        <input type="hidden" name="notification_id" value="{{ notif.pk }}">
+                        <button type="submit" class="btn-mark-read">Mark Read</button>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="empty-state">
+                <i class="bi bi-bell" style="font-size: 3rem; display: block; margin-bottom: 1rem;"></i>
+                <p>No notifications yet.</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
