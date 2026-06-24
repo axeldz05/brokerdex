@@ -178,13 +178,12 @@ class Command(BaseCommand):
             )
             if was_created:
                 user.set_password(data['password'])
-                user.save()
                 created += 1
-            elif user.balance_cents == 0:
-                user.balance_cents = balance
-                user.save()
+            # Always reset balance to the configured amount
+            user.balance_cents = balance
+            user.save(update_fields=['balance_cents'])
 
-        self.stdout.write(f"  Demo users: {created} created / {len(users_data)} total")
+        self.stdout.write(f"  Demo users: {created} new, {len(users_data) - created} existing (balances reset) / {len(users_data)} total")
 
     def _seed_market_maker(self):
         _, created = Account.objects.get_or_create(
@@ -317,6 +316,11 @@ class Command(BaseCommand):
                             hatches_at=timezone.now() + egg.hatch_duration,
                         )
                         created += 1
+                    else:
+                        self.stdout.write(self.style.WARNING(
+                            f"    {user.username} cannot afford {egg.name} (${egg.price}, "
+                            f"balance: ${locked_user.balance_dollars})"
+                        ))
             except Exception as e:
                 self.stdout.write(self.style.WARNING(
                     f"    Incubation failed for {user.username}: {e}"
