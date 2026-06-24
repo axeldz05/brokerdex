@@ -1,0 +1,20 @@
+[
+  {
+    "username": "ash_ketchum",
+    "email": "ash@brokerdex.io",
+    "password": "pikachu123",
+    "balance": 50000.00
+  },
+  {
+    "username": "misty_water",
+    "email": "misty@brokerdex.io",
+    "password": "starmie456",
+    "balance": 30000.00
+  },
+  {
+    "username": "brock_rock",
+    "email": "brock@brokerdex.io",
+    "password": "onix789",
+    "balance": 20000.00
+  }
+]

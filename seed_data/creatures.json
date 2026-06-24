@@ -1,0 +1,142 @@
+[
+  {
+    "name": "Charizard", "type": "fire", "secondary_type": "flying",
+    "description": "Charizard flies around the sky in search of powerful opponents. It breathes fire of such great heat that it melts anything.",
+    "base_stats": {"hp": 78, "attack": 84, "defense": 78, "special_attack": 109, "special_defense": 85, "speed": 100},
+    "initial_price": 450.00, "is_legendary": false, "is_mythical": false,
+    "abilities": ["Flamethrower", "Air Slash", "Dragon Claw", "Hyper Beam"]
+  },
+  {
+    "name": "Blastoise", "type": "water",
+    "description": "Blastoise has cannons that protrude from its shell. The cannons can be aimed and fired with precision.",
+    "base_stats": {"hp": 79, "attack": 83, "defense": 100, "special_attack": 85, "special_defense": 105, "speed": 78},
+    "initial_price": 420.00, "is_legendary": false, "is_mythical": false,
+    "abilities": ["Hydro Pump", "Surf", "Ice Beam", "Dark Pulse"]
+  },
+  {
+    "name": "Venusaur", "type": "grass", "secondary_type": "poison",
+    "description": "The flower on its back absorbs sunlight to produce energy. It can unleash powerful solar beams.",
+    "base_stats": {"hp": 80, "attack": 82, "defense": 83, "special_attack": 100, "special_defense": 100, "speed": 80},
+    "initial_price": 400.00, "is_legendary": false, "is_mythical": false,
+    "abilities": ["Solar Beam", "Vine Whip", "Sludge Bomb", "Hyper Beam"]
+  },
+  {
+    "name": "Pikachu", "type": "electric",
+    "description": "When Pikachu is angered, it immediately discharges the energy stored in the pouches in its cheeks.",
+    "base_stats": {"hp": 35, "attack": 55, "defense": 40, "special_attack": 50, "special_defense": 50, "speed": 90},
+    "initial_price": 150.00, "is_legendary": false, "is_mythical": false,
+    "abilities": ["Thunderbolt", "Thunder", "Quick Attack", "Play Rough"]
+  },
+  {
+    "name": "Raichu", "type": "electric",
+    "description": "Raichu stores electricity in its body. If it becomes fully charged, its tail stands up and sparks fly.",
+    "base_stats": {"hp": 60, "attack": 90, "defense": 55, "special_attack": 90, "special_defense": 80, "speed": 110},
+    "initial_price": 250.00, "is_legendary": false, "is_mythical": false,
+    "abilities": ["Thunderbolt", "Thunder", "Iron Head", "Quick Attack"]
+  },
+  {
+    "name": "Gengar", "type": "ghost", "secondary_type": "poison",
+    "description": "To steal the life of its target, it slips into the prey's shadow and silently waits for an opportunity.",
+    "base_stats": {"hp": 60, "attack": 65, "defense": 60, "special_attack": 130, "special_defense": 75, "speed": 110},
+    "initial_price": 500.00, "is_legendary": false, "is_mythical": false,
+    "abilities": ["Shadow Ball", "Dark Pulse", "Sludge Bomb", "Hyper Beam"]
+  },
+  {
+    "name": "Dragonite", "type": "dragon", "secondary_type": "flying",
+    "description": "It is said that this Pokémon lives somewhere in the sea and that it flies. It is a kindhearted Pokémon.",
+    "base_stats": {"hp": 91, "attack": 134, "defense": 95, "special_attack": 100, "special_defense": 100, "speed": 80},
+    "initial_price": 600.00, "is_legendary": false, "is_mythical": false,
+    "abilities": ["Dragon Claw", "Dragon Pulse", "Hyper Beam", "Ice Beam"]
+  },
+  {
+    "name": "Mewtwo", "type": "psychic",
+    "description": "A Pokémon created by scientific manipulation of Mew's DNA. It has almost unbeatable psychic power.",
+    "base_stats": {"hp": 106, "attack": 110, "defense": 90, "special_attack": 154, "special_defense": 90, "speed": 130},
+    "initial_price": 2500.00, "is_legendary": true, "is_mythical": false,
+    "abilities": ["Psychic", "Aura Sphere", "Shadow Ball", "Hyper Beam"]
+  },
+  {
+    "name": "Lucario", "type": "fighting", "secondary_type": "steel",
+    "description": "It can sense the aura of living things. It can read the thoughts and movements of its opponents.",
+    "base_stats": {"hp": 70, "attack": 110, "defense": 70, "special_attack": 115, "special_defense": 70, "speed": 90},
+    "initial_price": 350.00, "is_legendary": false, "is_mythical": false,
+    "abilities": ["Aura Sphere", "Close Combat", "Dark Pulse", "Iron Head"]
+  },
+  {
+    "name": "Garchomp", "type": "dragon", "secondary_type": "ground",
+    "description": "It flies at speeds equal to a jet fighter. It never allows its prey to escape.",
+    "base_stats": {"hp": 108, "attack": 130, "defense": 95, "special_attack": 80, "special_defense": 85, "speed": 102},
+    "initial_price": 550.00, "is_legendary": false, "is_mythical": false,
+    "abilities": ["Dragon Claw", "Earthquake", "Stone Edge", "Crunch"]
+  },
+  {
+    "name": "Tyranitar", "type": "rock", "secondary_type": "dark",
+    "description": "Extremely strong, it can change the landscape. It is so unruly that it cannot be controlled.",
+    "base_stats": {"hp": 100, "attack": 134, "defense": 110, "special_attack": 95, "special_defense": 100, "speed": 61},
+    "initial_price": 580.00, "is_legendary": false, "is_mythical": false,
+    "abilities": ["Stone Edge", "Earthquake", "Crunch", "Hyper Beam"]
+  },
+  {
+    "name": "Gyarados", "type": "water", "secondary_type": "flying",
+    "description": "Once it appears, it goes on a rampage. It remains enraged until it demolishes everything around it.",
+    "base_stats": {"hp": 95, "attack": 125, "defense": 79, "special_attack": 60, "special_defense": 100, "speed": 81},
+    "initial_price": 380.00, "is_legendary": false, "is_mythical": false,
+    "abilities": ["Surf", "Hydro Pump", "Ice Beam", "Crunch"]
+  },
+  {
+    "name": "Sylveon", "type": "fairy",
+    "description": "It sends a soothing aura from its ribbonlike feelers to calm fights and conflicts.",
+    "base_stats": {"hp": 95, "attack": 65, "defense": 65, "special_attack": 110, "special_defense": 130, "speed": 60},
+    "initial_price": 300.00, "is_legendary": false, "is_mythical": false,
+    "abilities": ["Moonblast", "Play Rough", "Hyper Beam", "Quick Attack"]
+  },
+  {
+    "name": "Scizor", "type": "bug", "secondary_type": "steel",
+    "description": "Its claws are as hard as steel. It can crush and defeat any opponent with them.",
+    "base_stats": {"hp": 70, "attack": 130, "defense": 100, "special_attack": 55, "special_defense": 80, "speed": 65},
+    "initial_price": 340.00, "is_legendary": false, "is_mythical": false,
+    "abilities": ["X-Scissor", "Iron Head", "Bullet Punch", "Quick Attack"]
+  },
+  {
+    "name": "Alakazam", "type": "psychic",
+    "description": "It has an incredibly high IQ. It remembers everything that has happened in the world.",
+    "base_stats": {"hp": 55, "attack": 50, "defense": 45, "special_attack": 135, "special_defense": 95, "speed": 120},
+    "initial_price": 480.00, "is_legendary": false, "is_mythical": false,
+    "abilities": ["Psychic", "Shadow Ball", "Aura Sphere", "Hyper Beam"]
+  },
+  {
+    "name": "Rayquaza", "type": "dragon", "secondary_type": "flying",
+    "description": "It lives in the ozone layer and descends to the ground when Groudon and Kyogre clash.",
+    "base_stats": {"hp": 105, "attack": 150, "defense": 90, "special_attack": 150, "special_defense": 90, "speed": 95},
+    "initial_price": 3000.00, "is_legendary": true, "is_mythical": false,
+    "abilities": ["Dragon Pulse", "Hyper Beam", "Fire Blast", "Surf"]
+  },
+  {
+    "name": "Mew", "type": "psychic",
+    "description": "It appears only to those who are pure of heart. It can learn any move known by any Pokémon.",
+    "base_stats": {"hp": 100, "attack": 100, "defense": 100, "special_attack": 100, "special_defense": 100, "speed": 100},
+    "initial_price": 5000.00, "is_legendary": false, "is_mythical": true,
+    "abilities": ["Psychic", "Aura Sphere", "Moonblast", "Hyper Beam"]
+  },
+  {
+    "name": "Greninja", "type": "water", "secondary_type": "dark",
+    "description": "It appears and vanishes with a ninja's grace. It toys with its enemies using swift movements.",
+    "base_stats": {"hp": 72, "attack": 95, "defense": 67, "special_attack": 103, "special_defense": 71, "speed": 122},
+    "initial_price": 520.00, "is_legendary": false, "is_mythical": false,
+    "abilities": ["Surf", "Dark Pulse", "Ice Beam", "Hydro Pump"]
+  },
+  {
+    "name": "Gardevoir", "type": "psychic", "secondary_type": "fairy",
+    "description": "It has the ability to predict the future. It senses the feelings of others with its psychic power.",
+    "base_stats": {"hp": 68, "attack": 65, "defense": 65, "special_attack": 125, "special_defense": 115, "speed": 80},
+    "initial_price": 360.00, "is_legendary": false, "is_mythical": false,
+    "abilities": ["Psychic", "Moonblast", "Shadow Ball", "Hyper Beam"]
+  },
+  {
+    "name": "Metagross", "type": "steel", "secondary_type": "psychic",
+    "description": "It is formed by the fusion of two Metangs. It has four brains and can process complex calculations.",
+    "base_stats": {"hp": 80, "attack": 135, "defense": 130, "special_attack": 95, "special_defense": 90, "speed": 70},
+    "initial_price": 620.00, "is_legendary": false, "is_mythical": false,
+    "abilities": ["Flash Cannon", "Earthquake", "Psychic", "Hyper Beam"]
+  }
+]

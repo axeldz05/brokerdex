@@ -1,0 +1,63 @@
+[
+  {
+    "username": "ash_ketchum",
+    "creature": "Pikachu",
+    "order_type": "BUY",
+    "execution_type": "LIMIT",
+    "quantity": 10,
+    "limit_price": 140.00
+  },
+  {
+    "username": "ash_ketchum",
+    "creature": "Charizard",
+    "order_type": "BUY",
+    "execution_type": "MARKET",
+    "quantity": 3
+  },
+  {
+    "username": "misty_water",
+    "creature": "Blastoise",
+    "order_type": "BUY",
+    "execution_type": "MARKET",
+    "quantity": 5
+  },
+  {
+    "username": "misty_water",
+    "creature": "Gyarados",
+    "order_type": "SELL",
+    "execution_type": "LIMIT",
+    "quantity": 2,
+    "limit_price": 400.00
+  },
+  {
+    "username": "brock_rock",
+    "creature": "Tyranitar",
+    "order_type": "BUY",
+    "execution_type": "LIMIT",
+    "quantity": 4,
+    "limit_price": 550.00
+  },
+  {
+    "username": "brock_rock",
+    "creature": "Lucario",
+    "order_type": "BUY",
+    "execution_type": "MARKET",
+    "quantity": 2
+  },
+  {
+    "username": "ash_ketchum",
+    "creature": "Mewtwo",
+    "order_type": "SELL",
+    "execution_type": "LIMIT",
+    "quantity": 1,
+    "limit_price": 2600.00
+  },
+  {
+    "username": "misty_water",
+    "creature": "Dragonite",
+    "order_type": "BUY",
+    "execution_type": "LIMIT",
+    "quantity": 3,
+    "limit_price": 580.00
+  }
+]
