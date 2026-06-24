@@ -8,9 +8,9 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 
 from account.models import Account
-from .models import Creature, Ability, EggTemplate, Incubation
-from .services import IncubationService, TrainingService
-from trading.models import Portfolio
+from .models import Creature, Ability, EggTemplate, Incubation, Battle, BattleInvestment
+from .services import IncubationService, TrainingService, BattleService
+from trading.models import Portfolio, Notification
 
 
 class IncubationIntegrationTests(TestCase):
@@ -241,3 +241,207 @@ class TrainingIntegrationTests(TestCase):
             reverse('creature:train_creature', args=[self.portfolio.pk])
         )
         self.assertEqual(response.status_code, 404)
+
+
+class BattleServiceIntegrationTests(TestCase):
+    """Integration tests for the battle service."""
+
+    def setUp(self):
+        self.ability = Ability.objects.create(
+            name='Tackle', ability_type='normal',
+            damage_class='physical', power=40,
+        )
+
+        self.creature_1 = Creature.objects.create(
+            name='Charmander', type='fire',
+            current_price=Decimal('100.00'),
+            hp=39, attack=52, defense=43,
+            battle_cooldown=timedelta(hours=1),
+            cooldown_expires_at=timezone.now() - timedelta(hours=1),
+            description='A fire lizard.',
+            elo_rating=1000,
+        )
+        self.creature_1.abilities.add(self.ability)
+
+        self.creature_2 = Creature.objects.create(
+            name='Squirtle', type='water',
+            current_price=Decimal('100.00'),
+            hp=44, attack=48, defense=65,
+            battle_cooldown=timedelta(hours=1),
+            cooldown_expires_at=timezone.now() - timedelta(hours=1),
+            description='A water turtle.',
+            elo_rating=1200,
+        )
+        self.creature_2.abilities.add(self.ability)
+
+        self.user = Account.objects.create_user(
+            username='battlefan',
+            email='bf@test.com',
+            password='testpass123',
+        )
+        self.user.balance_cents = 100_000_00
+        self.user.save()
+
+    def test_calculate_elo_change_equal_rating(self):
+        """Equal ratings: expected score = 0.5, change = K * (1 - 0.5) = 16"""
+        change = BattleService.calculate_elo_change(1000, 1000, 1)
+        self.assertEqual(change, 16)
+
+    def test_calculate_elo_change_stronger_wins(self):
+        """Stronger (1200) beats weaker (1000): expected ≈ 0.76, change ≈ 32 * 0.24 = 7"""
+        change = BattleService.calculate_elo_change(1200, 1000, 1)
+        self.assertEqual(change, 8)  # 32 * (1 - 0.76) = 7.68 ≈ 8
+
+    def test_calculate_elo_change_weaker_wins(self):
+        """Weaker (1000) beats stronger (1200): expected ≈ 0.24, change ≈ 32 * 0.76 = 24"""
+        change = BattleService.calculate_elo_change(1000, 1200, 1)
+        self.assertEqual(change, 24)
+
+    def test_calculate_potential_change(self):
+        """Weaker creature has higher win potential (bigger upset = bigger gain)"""
+        win_pct, lose_pct = BattleService.calculate_potential_change(1000, 1200)
+        self.assertGreater(win_pct, 0)
+        self.assertLess(lose_pct, 0)
+        # Weaker creature's win potential should be > 2.5%
+        self.assertGreater(win_pct, Decimal('2.50'))
+        # Stronger creature's win potential should be < 2.5%
+        strong_win, strong_lose = BattleService.calculate_potential_change(1200, 1000)
+        self.assertLess(strong_win, Decimal('2.50'))
+
+    def test_start_battle_sets_elo_fields(self):
+        battle = BattleService.start_battle(self.creature_1, self.creature_2)
+        self.assertEqual(battle.creature_1_elo_before, 1000)
+        self.assertEqual(battle.creature_2_elo_before, 1200)
+        self.assertIsNotNone(battle.creature_1_potential_change)
+        self.assertIsNotNone(battle.creature_2_potential_change)
+        expected_next = timezone.now() + timedelta(seconds=180)
+        self.assertAlmostEqual(
+            battle.next_turn_at.timestamp(),
+            expected_next.timestamp(),
+            delta=1
+        )
+        self.assertEqual(battle.status, 'active')
+
+    def test_process_battle_result_updates_elo_and_wins(self):
+        battle = Battle.objects.start_battle(self.creature_1, self.creature_2)
+        p1 = battle.participants.get(creature=self.creature_1)
+        p2 = battle.participants.get(creature=self.creature_2)
+
+        battle.record_action(
+            actor_participant=p1, target_participant=p2,
+            ability=self.ability, damage=50
+        )
+        battle.refresh_from_db()
+        self.assertEqual(battle.status, 'finished')
+
+        c1_elo_before = self.creature_1.elo_rating
+        c2_elo_before = self.creature_2.elo_rating
+
+        BattleService.process_battle_result(battle)
+
+        self.creature_1.refresh_from_db()
+        self.creature_2.refresh_from_db()
+
+        self.assertEqual(self.creature_1.wins, 1)
+        self.assertEqual(self.creature_2.losses, 1)
+        self.assertGreater(self.creature_1.elo_rating, c1_elo_before)
+        self.assertLess(self.creature_2.elo_rating, c2_elo_before)
+
+        battle.refresh_from_db()
+        self.assertIsNotNone(battle.creature_1_elo_after)
+        self.assertIsNotNone(battle.creature_2_elo_after)
+
+    def test_process_battle_result_creates_notifications(self):
+        portfolio = Portfolio.objects.create(
+            owner=self.user,
+            creature=self.creature_1,
+            quantity=Decimal('5'),
+            average_cost=Decimal('100.00'),
+        )
+
+        battle = Battle.objects.start_battle(self.creature_1, self.creature_2)
+        p1 = battle.participants.get(creature=self.creature_1)
+        p2 = battle.participants.get(creature=self.creature_2)
+        battle.record_action(
+            actor_participant=p1, target_participant=p2,
+            ability=self.ability, damage=50
+        )
+        battle.refresh_from_db()
+
+        BattleService.process_battle_result(battle)
+
+        notif = Notification.objects.filter(
+            user=self.user,
+            notification_type=Notification.Type.BATTLE_RESULT,
+        )
+        self.assertEqual(notif.count(), 1)
+        self.assertIn('won', notif.first().title)
+
+    def test_record_turn_investments(self):
+        battle = Battle.objects.start_battle(self.creature_1, self.creature_2)
+        Portfolio.objects.create(
+            owner=self.user,
+            creature=self.creature_1,
+            quantity=Decimal('3'),
+            average_cost=Decimal('100.00'),
+        )
+
+        BattleService.record_turn_investments(battle, 1)
+
+        inv = BattleInvestment.objects.filter(battle=battle, turn_number=1)
+        self.assertEqual(inv.count(), 2)
+        c1_inv = inv.get(creature=self.creature_1)
+        self.assertGreaterEqual(c1_inv.investor_count, 1)
+
+    def test_get_active_battles_returns_active_only(self):
+        battle = BattleService.start_battle(self.creature_1, self.creature_2)
+        active = BattleService.get_active_battles()
+        self.assertIn(battle, active)
+        self.assertEqual(len(active), 1)
+
+    def test_get_leaderboard_empty(self):
+        lb = BattleService.get_leaderboard()
+        self.assertEqual(len(lb), 0)
+
+    def test_get_leaderboard_with_data(self):
+        self.creature_1.wins = 10
+        self.creature_1.losses = 2
+        self.creature_1.save()
+        self.creature_2.wins = 5
+        self.creature_2.losses = 8
+        self.creature_2.save()
+
+        lb = BattleService.get_leaderboard()
+        self.assertEqual(len(lb), 2)
+        self.assertEqual(lb[0].name, 'Charmander')
+
+    def test_get_battle_detail_returns_none_for_missing(self):
+        self.assertIsNone(BattleService.get_battle_detail(9999))
+
+    def test_get_user_creature_battles(self):
+        Portfolio.objects.create(
+            owner=self.user, creature=self.creature_1,
+            quantity=Decimal('5'), average_cost=Decimal('100'),
+        )
+        battle = BattleService.start_battle(self.creature_1, self.creature_2)
+        user_battles = BattleService.get_user_creature_battles(self.user)
+        self.assertIn(battle, user_battles)
+
+    def test_get_creature_battle_history(self):
+        battle = BattleService.start_battle(self.creature_1, self.creature_2)
+        history = BattleService.get_creature_battle_history(self.creature_1)
+        self.assertIn(battle, history)
+
+    def test_get_historical_battles(self):
+        battle = BattleService.start_battle(self.creature_1, self.creature_2)
+        # Finish the battle
+        p1 = battle.participants.get(creature=self.creature_1)
+        p2 = battle.participants.get(creature=self.creature_2)
+        battle.record_action(
+            actor_participant=p1, target_participant=p2,
+            ability=self.ability, damage=50
+        )
+        battle.refresh_from_db()
+
+        historical = BattleService.get_historical_battles()
+        self.assertIn(battle, historical)
