@@ -8,7 +8,7 @@ from django.contrib import messages
 
 from creature.models import Creature
 from .forms import MarketOrderForm, LimitOrderForm
-from .models import Order, Trade, Portfolio, PriceHistory
+from .models import Order, Trade, Portfolio, PriceHistory, MarketIndex
 from .services import TradingEngine
 from creature.services import TrainingService
 
@@ -286,3 +286,48 @@ def price_history_api(request, creature_id):
         'interval': interval,
         'data': data,
     })
+
+
+@login_required
+def market_indices_view(request):
+    """
+    Show latest market indices for all types.
+    """
+    latest_indices = []
+    for type_choice in MarketIndex._meta.get_field('creature_type').choices:
+        type_value = type_choice[0]
+        latest = MarketIndex.objects.filter(
+            creature_type=type_value
+        ).order_by('-timestamp').first()
+        if latest:
+            latest_indices.append(latest)
+
+    return render(request, 'trading/market_indices.html', {
+        'indices': latest_indices,
+    })
+
+
+@login_required
+def market_indices_api(request):
+    """
+    JSON API for market indices data.
+    """
+    type_filter = request.GET.get('type', '')
+    indices = MarketIndex.objects.all()
+
+    if type_filter:
+        indices = indices.filter(creature_type=type_filter)
+
+    latest = indices.order_by('-timestamp').select_related()[:50]
+
+    data = [{
+        'type': idx.creature_type,
+        'value': float(idx.value),
+        'previous_value': float(idx.previous_value),
+        'change_pct': float(idx.change_pct),
+        'creature_count': idx.creature_count,
+        'total_volume': float(idx.total_volume),
+        'timestamp': idx.timestamp.isoformat(),
+    } for idx in latest]
+
+    return JsonResponse({'indices': data})

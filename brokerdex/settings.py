@@ -178,4 +178,8 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'trading.tasks.record_daily_price_snapshots',
         'schedule': crontab(hour=0, minute=0),
     },
+    'calcular-indices-diario': {
+        'task': 'trading.tasks.calculate_market_indices',
+        'schedule': crontab(hour=0, minute=30),
+    },
 }

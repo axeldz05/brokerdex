@@ -10,4 +10,6 @@ urlpatterns = [
     path('trading/portfolio/', views.portfolio_view, name='portfolio'),
     path('trading/orders/', views.order_history_view, name='orders'),
     path('trading/api/price-history/<uuid:creature_id>/', views.price_history_api, name='price_history_api'),
+    path('trading/indices/', views.market_indices_view, name='market_indices'),
+    path('trading/api/indices/', views.market_indices_api, name='market_indices_api'),
 ]

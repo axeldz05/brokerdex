@@ -7,8 +7,8 @@ from django.core.exceptions import ValidationError
 
 from account.models import Account
 from creature.models import Creature, Ability
-from .models import Portfolio, Order, Trade, PriceHistory
-from .services import TradingEngine, PricingEngine
+from .models import Portfolio, Order, Trade, PriceHistory, MarketIndex
+from .services import TradingEngine, PricingEngine, MarketIndicesService
 
 
 class TradingIntegrationTests(TestCase):
@@ -240,3 +240,96 @@ class TradingIntegrationTests(TestCase):
         self.assertFalse(
             Portfolio.objects.filter(owner=self.user, creature=self.creature).exists()
         )
+
+
+class MarketIndicesIntegrationTests(TestCase):
+    """Integration tests for market indices."""
+
+    def setUp(self):
+        self.client = Client()
+        self.user = Account.objects.create_user(
+            username='index_user', email='idx@test.com', password='testpass123'
+        )
+
+        self.ability = Ability.objects.create(
+            name='QuickAttack', ability_type='normal',
+            damage_class='physical', power=40,
+        )
+
+        self.fire_creature = Creature.objects.create(
+            name='Charmander', type='fire',
+            current_price=Decimal('150.00'),
+            previous_close=Decimal('145.00'),
+            hp=39, attack=52, defense=43,
+            battle_cooldown=timedelta(hours=1),
+            description='Fire lizard.',
+        )
+        self.fire_creature.abilities.add(self.ability)
+
+        self.fire_creature2 = Creature.objects.create(
+            name='Vulpix', type='fire',
+            current_price=Decimal('200.00'),
+            previous_close=Decimal('190.00'),
+            hp=38, attack=41, defense=40,
+            battle_cooldown=timedelta(hours=1),
+            description='Fire fox.',
+        )
+        self.fire_creature2.abilities.add(self.ability)
+
+        self.water_creature = Creature.objects.create(
+            name='Squirtle', type='water',
+            current_price=Decimal('180.00'),
+            previous_close=Decimal('175.00'),
+            hp=44, attack=48, defense=65,
+            battle_cooldown=timedelta(hours=1),
+            description='Water turtle.',
+        )
+        self.water_creature.abilities.add(self.ability)
+
+    def _login(self):
+        self.client.login(username='index_user', password='testpass123')
+
+    def test_type_index_calculation(self):
+        index = MarketIndicesService.calculate_type_index('fire')
+        self.assertIsNotNone(index)
+        self.assertEqual(index.creature_type, 'fire')
+        expected_value = (Decimal('150.00') + Decimal('200.00')) / Decimal('2')
+        self.assertEqual(index.value, expected_value)
+        self.assertEqual(index.creature_count, 2)
+
+    def test_all_indices_calculation(self):
+        indices = MarketIndicesService.calculate_all_indices()
+        types = {i.creature_type for i in indices}
+        self.assertIn('fire', types)
+        self.assertIn('water', types)
+
+    def test_index_change_pct(self):
+        index = MarketIndicesService.calculate_type_index('fire')
+        self.assertEqual(index.change_pct, Decimal('0'))
+
+        index2 = MarketIndicesService.calculate_type_index('fire')
+        fire_avg = (Decimal('150.00') + Decimal('200.00')) / Decimal('2')
+        expected_change = Decimal('0')
+        self.assertEqual(index2.change_pct, expected_change)
+
+    def test_market_indices_page_requires_login(self):
+        response = self.client.get(reverse('trading:market_indices'))
+        self.assertEqual(response.status_code, 302)
+
+    def test_market_indices_page_shows_indices(self):
+        self._login()
+        MarketIndicesService.calculate_type_index('fire')
+        response = self.client.get(reverse('trading:market_indices'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Fire-Type Index')
+        self.assertContains(response, '175.00')
+
+    def test_market_indices_api(self):
+        self._login()
+        MarketIndicesService.calculate_type_index('fire')
+        response = self.client.get(reverse('trading:market_indices_api'))
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn('indices', data)
+        self.assertGreaterEqual(len(data['indices']), 1)
+        self.assertEqual(data['indices'][0]['type'], 'fire')
