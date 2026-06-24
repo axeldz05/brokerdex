@@ -231,12 +231,28 @@
         border-bottom: none;
     }
 
+    .period-tab {
+        padding: 0.4rem 0.9rem;
+        border-radius: 6px;
+        font-size: 0.78rem;
+        font-weight: 600;
+        color: var(--text-secondary);
+        text-decoration: none;
+        transition: all 0.2s;
+    }
+    .period-tab:hover { color: var(--text-primary); }
+    .period-tab.active {
+        background: var(--accent-blue);
+        color: #fff;
+    }
+
+    .chart-container { position: relative; }
+
     @media (max-width: 768px) {
         .summary-grid { grid-template-columns: repeat(2, 1fr); }
         .hide-mobile { display: none; }
         .stat-grid-sm { grid-template-columns: repeat(2, 1fr); }
     }
-</style>
 
 <div class="portfolio-page">
     <div class="portfolio-header">
@@ -510,6 +526,49 @@
                 </div>
             </div>
         </div>
+
+        {% if entries %}
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card-dark">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                        <h3 style="margin-bottom:0;">Income & Expenses</h3>
+                        <div style="display:flex; gap:0.25rem; background:var(--bg-secondary); border-radius:8px; padding:0.25rem;">
+                            <a href="?period=monthly" class="period-tab {% if period == 'monthly' %}active{% endif %}" id="tabMonthly">Monthly</a>
+                            <a href="?period=yearly" class="period-tab {% if period == 'yearly' %}active{% endif %}" id="tabYearly">Yearly</a>
+                        </div>
+                    </div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-4">
+                            <div class="stat-item-sm" style="background:rgba(63,185,80,0.08); border:1px solid rgba(63,185,80,0.2); border-radius:8px; padding:1rem;">
+                                <div class="label" style="color:var(--accent-green);">Total Income</div>
+                                <div class="value positive" id="totalIncome" style="font-size:1.3rem;">${{ total_income|floatformat:2 }}</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="stat-item-sm" style="background:rgba(248,81,73,0.08); border:1px solid rgba(248,81,73,0.2); border-radius:8px; padding:1rem;">
+                                <div class="label" style="color:var(--accent-red);">Total Expenses</div>
+                                <div class="value negative" id="totalExpenses" style="font-size:1.3rem;">${{ total_expenses|floatformat:2 }}</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="stat-item-sm" style="background:rgba(88,166,255,0.08); border:1px solid rgba(88,166,255,0.2); border-radius:8px; padding:1rem;">
+                                <div class="label" style="color:var(--accent-blue);">Net Flow</div>
+                                <div class="value" id="netFlow" style="font-size:1.3rem; color:{% if net_flow >= 0 %}var(--accent-green){% else %}var(--accent-red){% endif %};">
+                                    {% if net_flow >= 0 %}+{% endif %}${{ net_flow|floatformat:2 }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="chart-container" style="height:300px;">
+                        <canvas id="incomeExpensesChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
     </div>
 </div>
 {% endblock %}
@@ -696,6 +755,128 @@ document.querySelectorAll('.portfolio-table tbody tr').forEach(row => {
         selectCreature(this);
     });
 });
+
+// --- Income & Expenses Chart ---
+let ieChart = null;
+const incomeRaw = JSON.parse('{{ income_data_json|safe }}');
+const expensesRaw = JSON.parse('{{ expenses_data_json|safe }}');
+const netRaw = JSON.parse('{{ net_data_json|safe }}');
+
+function buildIEChart() {
+    const ctx = document.getElementById('incomeExpensesChart');
+    if (!ctx) return;
+    const ctx2d = ctx.getContext('2d');
+    const gradientIncome = ctx2d.createLinearGradient(0,0,0,280);
+    gradientIncome.addColorStop(0, 'rgba(63,185,80,0.25)');
+    gradientIncome.addColorStop(1, 'rgba(63,185,80,0.0)');
+    const gradientExpense = ctx2d.createLinearGradient(0,0,0,280);
+    gradientExpense.addColorStop(0, 'rgba(248,81,73,0.25)');
+    gradientExpense.addColorStop(1, 'rgba(248,81,73,0.0)');
+
+    if (ieChart) ieChart.destroy();
+    ieChart = new Chart(ctx2d, {
+        type: 'bar',
+        data: {
+            labels: incomeRaw.map(d => d.period),
+            datasets: [
+                {
+                    label: 'Income',
+                    data: incomeRaw.map(d => d.total),
+                    backgroundColor: gradientIncome,
+                    borderColor: 'rgba(63,185,80,0.6)',
+                    borderWidth: 1,
+                    borderRadius: 4,
+                },
+                {
+                    label: 'Expenses',
+                    data: expensesRaw.map(d => d.total),
+                    backgroundColor: gradientExpense,
+                    borderColor: 'rgba(248,81,73,0.6)',
+                    borderWidth: 1,
+                    borderRadius: 4,
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: { color: '#8b949e', font:{size:11}, usePointStyle:true, padding:16 }
+                },
+                tooltip: {
+                    backgroundColor: '#1c2128',
+                    borderColor: '#30363d',
+                    borderWidth: 1,
+                    titleColor: '#e6edf3',
+                    bodyColor: '#e6edf3',
+                    callbacks: { label: (ctx) => ctx.dataset.label + ': $' + ctx.parsed.y.toFixed(2) }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { color: 'rgba(48,54,61,0.4)' },
+                    ticks: { color: '#8b949e', maxTicksLimit: 12 }
+                },
+                y: {
+                    grid: { color: 'rgba(48,54,61,0.4)' },
+                    ticks: { color: '#8b949e', callback: (v) => '$' + v.toFixed(0) }
+                }
+            }
+        }
+    });
+}
+buildIEChart();
+
+// --- Auto-refresh balance & summary ---
+const PERIOD = '{{ period }}';
+let refreshTimer = null;
+
+function refreshSummary() {
+    fetch('/trading/api/portfolio-summary/?period=' + PERIOD)
+        .then(r => r.json())
+        .then(data => {
+            const balEl = document.querySelector('.card-dark .value');
+            if (balEl && balEl.textContent.startsWith('$')) {
+                // Update cash balance card
+                const balCard = document.querySelectorAll('.card-dark')[document.querySelectorAll('.card-dark').length - 1];
+                if (balCard && balCard.querySelector('.value')) {
+                    balCard.querySelector('.value').textContent = '$' + data.balance.toFixed(2);
+                }
+            }
+            // Update summary cards
+            const summaryValues = document.querySelectorAll('.summary-card .value');
+            if (summaryValues.length >= 4) {
+                summaryValues[0].innerHTML = '$' + data.total_value.toFixed(2);
+                summaryValues[1].innerHTML = '$' + data.total_cost.toFixed(2);
+                const pnlSign = data.total_pnl >= 0 ? '+' : '';
+                summaryValues[2].innerHTML = pnlSign + '$' + data.total_pnl.toFixed(2) +
+                    '<span style="font-size:0.75rem;display:block;font-weight:400;">' +
+                    (data.total_pnl_pct >= 0 ? '+' : '') + data.total_pnl_pct.toFixed(2) + '%</span>';
+            }
+            // Update Income & Expenses cards
+            const ti = document.getElementById('totalIncome');
+            const te = document.getElementById('totalExpenses');
+            const nf = document.getElementById('netFlow');
+            if (ti) ti.textContent = '$' + data.total_income.toFixed(2);
+            if (te) te.textContent = '$' + data.total_expenses.toFixed(2);
+            if (nf) {
+                nf.textContent = (data.net_flow >= 0 ? '+' : '') + '$' + data.net_flow.toFixed(2);
+                nf.style.color = data.net_flow >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
+            }
+            // Update IE chart data
+            if (ieChart) {
+                ieChart.data.labels = data.income_data.map(d => d.period);
+                ieChart.data.datasets[0].data = data.income_data.map(d => d.total);
+                ieChart.data.datasets[1].data = data.expenses_data.map(d => d.total);
+                ieChart.update();
+            }
+        })
+        .catch(() => {});
+}
+
+refreshTimer = setInterval(refreshSummary, 15000);
 </script>
 {% endif %}
 {% endblock %}

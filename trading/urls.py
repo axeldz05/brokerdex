@@ -14,4 +14,5 @@ urlpatterns = [
     path('trading/api/indices/', views.market_indices_api, name='market_indices_api'),
     path('trading/notifications/', views.notifications_view, name='notifications'),
     path('trading/api/notifications/', views.notifications_api, name='notifications_api'),
+    path('trading/api/portfolio-summary/', views.portfolio_summary_api, name='portfolio_summary_api'),
 ]
