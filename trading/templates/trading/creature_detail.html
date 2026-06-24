@@ -448,27 +448,24 @@
                         </a>
                     </div>
                     {% if top_battles %}
-                        {% for battle in top_battles %}
-                        <a href="{% url 'creature:battle_detail' battle.id %}" class="text-decoration-none" style="color: inherit;">
+                        {% for entry in top_battles %}
+                        <a href="{% url 'creature:battle_detail' entry.battle.id %}" class="text-decoration-none" style="color: inherit;">
                         <div class="d-flex justify-content-between align-items-center py-2" style="border-bottom: 1px solid var(--border-color); font-size: 0.85rem;">
                             <div class="d-flex align-items-center gap-2">
-                                {% with p_list=battle.participants.all %}
-                                    <span>{{ p_list.0.creature.name }}</span>
-                                    <span class="fw-bold" style="color: var(--accent-red);">vs</span>
-                                    <span>{{ p_list.1.creature.name }}</span>
-                                {% endwith %}
+                                <span>{{ creature.name }}</span>
+                                <span class="fw-bold" style="color: var(--accent-red);">vs</span>
+                                <span>{{ entry.opponent }}</span>
                             </div>
                             <div class="text-end">
-                                <span class="badge bg-secondary me-1">Turn {{ battle.current_turn }}</span>
-                                {% if battle.winner %}
-                                    {% if battle.winner.creature_id == creature.id %}
-                                    <span class="text-success small">W</span>
-                                    {% else %}
-                                    <span class="text-danger small">L</span>
-                                    {% endif %}
+                                {% if entry.won %}
+                                <span class="text-success small fw-bold">W</span>
                                 {% else %}
-                                    <span class="text-muted small">Draw</span>
+                                <span class="text-danger small fw-bold">L</span>
                                 {% endif %}
+                                <span class="{% if entry.change_pct >= 0 %}text-success{% else %}text-danger{% endif %} ms-2" style="font-size: 0.8rem; font-weight: 600;">
+                                    {% if entry.change_pct >= 0 %}▲ +{% else %}▼ {% endif %}{{ entry.change_pct|floatformat:2 }}%
+                                    ({% if entry.change_abs >= 0 %}+{% endif %}${{ entry.change_abs|floatformat:2 }})
+                                </span>
                             </div>
                         </div>
                         </a>
