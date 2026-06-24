@@ -297,6 +297,15 @@ class Command(BaseCommand):
                     p.current_hp = remaining
                     p.save(update_fields=['current_hp'])
 
+                # Force-finish battle since buffer HP prevented natural death via record_action
+                if battle.status == 'active':
+                    winner_p = participants[0]  # creature_1 always wins per demo data
+                    c1.end_battle()
+                    c2.end_battle()
+                    battle.status = 'finished'
+                    battle.winner = winner_p
+                    battle.save(update_fields=['status', 'winner'])
+
                 # Process ELO, wins/losses, price updates
                 BattleService.process_battle_result(battle)
 
