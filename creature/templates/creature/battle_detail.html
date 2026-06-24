@@ -1,0 +1,127 @@
+{% extends "layout.html" %}
+{% load static %}
+{% load humanize %}
+{% load trading_tags %}
+
+{% block content %}
+<div class="container mt-4">
+    <a href="{% url 'creature:battle_list' %}" class="btn btn-sm btn-outline-secondary mb-3">
+        <i class='bx bx-arrow-back'></i> Back to Battles
+    </a>
+
+    {% with p1=participants_list.0 p2=participants_list.1 %}
+    {% with c1=p1.creature c2=p2.creature %}
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="row align-items-center text-center">
+                <div class="col-5">
+                    {% if c1.small_icon_url %}
+                        <img src="{{ c1.small_icon_url }}" alt="{{ c1.name }}" class="img-fluid" style="max-height: 100px;">
+                    {% endif %}
+                    <h4>{{ c1.name }}</h4>
+                    <span class="badge" style="background: {{ c1.type|type_bg }}; color: {{ c1.type|type_color }};">{{ c1.get_type_display }}</span>
+                    {% if battle.winner and battle.winner.pk == p1.pk %}
+                        <div class="text-success mt-2"><i class='bx bx-trophy'></i> Winner</div>
+                    {% endif %}
+                </div>
+                <div class="col-2">
+                    <div class="vs-text" style="font-size: 3rem; font-weight: 900; color: var(--accent-red);">VS</div>
+                    <div class="badge bg-secondary">Turn {{ battle.current_turn }}</div>
+                    <div class="small text-muted mt-1">{{ battle.get_status_display }}</div>
+                </div>
+                <div class="col-5">
+                    {% if c2.small_icon_url %}
+                        <img src="{{ c2.small_icon_url }}" alt="{{ c2.name }}" class="img-fluid" style="max-height: 100px;">
+                    {% endif %}
+                    <h4>{{ c2.name }}</h4>
+                    <span class="badge" style="background: {{ c2.type|type_bg }}; color: {{ c2.type|type_color }};">{{ c2.get_type_display }}</span>
+                    {% if battle.winner and battle.winner.pk == p2.pk %}
+                        <div class="text-success mt-2"><i class='bx bx-trophy'></i> Winner</div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="row mt-3">
+                <div class="col-5">
+                    <div class="d-flex justify-content-between">
+                        <span>HP</span>
+                        <span>{{ p1.current_hp }}/{{ c1.hp }}</span>
+                    </div>
+                    <div class="progress" style="height: 10px; background: var(--bg-secondary);">
+                        {% widthratio p1.current_hp c1.hp 100 as hp_pct1 %}
+                        <div class="progress-bar {% if hp_pct1 > 50 %}bg-success{% elif hp_pct1 > 25 %}bg-warning{% else %}bg-danger{% endif %}" 
+                             style="width: {{ hp_pct1 }}%">
+                        </div>
+                    </div>
+                </div>
+                <div class="col-2"></div>
+                <div class="col-5">
+                    <div class="d-flex justify-content-between">
+                        <span>HP</span>
+                        <span>{{ p2.current_hp }}/{{ c2.hp }}</span>
+                    </div>
+                    <div class="progress" style="height: 10px; background: var(--bg-secondary);">
+                        {% widthratio p2.current_hp c2.hp 100 as hp_pct2 %}
+                        <div class="progress-bar {% if hp_pct2 > 50 %}bg-success{% elif hp_pct2 > 25 %}bg-warning{% else %}bg-danger{% endif %}" 
+                             style="width: {{ hp_pct2 }}%">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Turn Timeline -->
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0"><i class='bx bx-list-ul'></i> Battle Log</h5>
+        </div>
+        <div class="card-body">
+            {% if actions_list %}
+                <div class="timeline">
+                    {% for action in actions_list %}
+                    <div class="timeline-item mb-3">
+                        <div class="d-flex align-items-start">
+                            <div class="timeline-badge me-3 text-center" style="min-width: 60px;">
+                                <span class="badge bg-secondary">Turn {{ action.turn_number }}</span>
+                            </div>
+                            <div class="flex-grow-1">
+                                <p class="mb-1">
+                                    <strong>{{ action.actor.creature.name }}</strong> used 
+                                    <strong>{{ action.ability.name }}</strong>
+                                    on <strong>{{ action.target.creature.name }}</strong>
+                                </p>
+                                {% if action.damage_dealt > 0 %}
+                                <div class="text-danger">
+                                    <i class='bx bx-bolt'></i> {{ action.damage_dealt }} damage dealt
+                                </div>
+                                {% endif %}
+                                {% if action.actor.status_ailment %}
+                                <div class="text-warning">
+                                    <i class='bx bx-error-circle'></i> {{ action.actor.get_status_ailment_display }}
+                                </div>
+                                {% endif %}
+                                {% for inv in investments_list %}
+                                        {% if inv.turn_number == action.turn_number %}
+                                        <div class="text-info small mt-1">
+                                            <i class='bx bx-user-plus'></i> 
+                                            {{ inv.investor_count }} people invested in {{ inv.creature.name }} this turn!
+                                        </div>
+                                        {% endif %}
+                                    {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="text-center text-muted py-3">
+                    <i class='bx bx-hourglass' style="font-size: 2rem;"></i>
+                    <p class="mt-2">No actions have been recorded yet. The battle is still unfolding...</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endwith %}{% endwith %}
+</div>
+{% endblock %}
