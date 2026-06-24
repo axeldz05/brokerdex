@@ -1,4 +1,5 @@
 from decimal import Decimal
+import logging
 
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
@@ -8,6 +9,8 @@ from django.contrib import messages
 from .models import EggTemplate, Incubation, Creature
 from .services import IncubationService, TrainingService
 from trading.models import Portfolio
+
+logger = logging.getLogger(__name__)
 
 
 @login_required
@@ -46,6 +49,13 @@ def purchase_egg_view(request, egg_id):
         )
     except ValidationError as e:
         messages.error(request, str(e.message if hasattr(e, 'message') else e))
+    except Exception as e:
+        logger.exception("Failed to purchase egg")
+        msg = str(getattr(e, 'message', e))
+        if 'Connection refused' in msg or 'connect' in msg.lower():
+            messages.error(request, "Background worker is not running. Please contact an administrator.")
+        else:
+            messages.error(request, f"Failed to start incubation: {msg}")
 
     return redirect('creature:incubation_shop')
 
@@ -90,5 +100,16 @@ def train_creature_view(request, portfolio_id):
         )
     except ValidationError as e:
         messages.error(request, str(e.message if hasattr(e, 'message') else e))
+    except Exception as e:
+        logger.exception(f"Failed to start training for creature {creature.pk}")
+        msg = str(getattr(e, 'message', e))
+        if 'Connection refused' in msg or 'connect' in msg.lower():
+            messages.error(
+                request,
+                "Could not connect to the background worker (Redis/Celery). "
+                "Make sure Redis and Celery are running."
+            )
+        else:
+            messages.error(request, f"Failed to start training: {msg}")
 
     return redirect('trading:portfolio')

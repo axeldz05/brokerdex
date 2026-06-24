@@ -18,6 +18,9 @@
                 <a href="{% url 'account:settings' %}?section=bank_accounts" class="list-group-item list-group-item-action {% if section == 'accounts' %}active{% endif %}">
                     Bank Accounts
                 </a>
+                <a href="{% url 'account:settings' %}?section=theme" class="list-group-item list-group-item-action {% if section == 'theme' %}active{% endif %}">
+                    Theme
+                </a>
             </div>
         </div>
         <!-- Settings Content -->
@@ -62,6 +65,48 @@
                 {% endfor %}
                 <button type="submit" class="btn btn-primary">Update Account Settings</button>
             </form>
+            {% elif section == "theme" %}
+            <h3>Theme Settings</h3>
+            <p style="color: var(--text-secondary); margin-bottom: 2rem;">
+                Choose between light and dark mode for the interface.
+            </p>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <div class="card p-3 text-center theme-option" id="themeDarkCard"
+                         style="cursor:pointer; border: 2px solid var(--accent-blue); transition: all 0.2s;"
+                         onclick="setThemeFromSettings('dark')">
+                        <i class="bi bi-moon-fill" style="font-size: 2rem; color: var(--accent-purple);"></i>
+                        <h5 class="mt-2 mb-1">Dark Mode</h5>
+                        <small style="color: var(--text-secondary);">Easy on the eyes, recommended for trading</small>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card p-3 text-center theme-option" id="themeLightCard"
+                         style="cursor:pointer; border: 2px solid var(--border-color); transition: all 0.2s;"
+                         onclick="setThemeFromSettings('light')">
+                        <i class="bi bi-sun-fill" style="font-size: 2rem; color: #d29922;"></i>
+                        <h5 class="mt-2 mb-1">Light Mode</h5>
+                        <small style="color: var(--text-secondary);">Clean, bright interface</small>
+                    </div>
+                </div>
+            </div>
+            <script>
+            function updateThemeCards() {
+                const current = localStorage.getItem('brokerdex-theme') || 'dark';
+                document.getElementById('themeDarkCard').style.borderColor = current === 'dark' ? 'var(--accent-blue)' : 'var(--border-color)';
+                document.getElementById('themeLightCard').style.borderColor = current === 'light' ? 'var(--accent-blue)' : 'var(--border-color)';
+            }
+            function setThemeFromSettings(theme) {
+                localStorage.setItem('brokerdex-theme', theme);
+                document.documentElement.setAttribute('data-theme', theme);
+                updateThemeCards();
+                const icon = document.getElementById('themeIcon');
+                if (icon) {
+                    icon.className = theme === 'light' ? 'bi bi-moon-fill' : 'bi bi-sun-fill';
+                }
+            }
+            updateThemeCards();
+            </script>
             {% elif section == "bank_accounts" %}
             <h3>Bank Accounts</h3>
             <table class="table">

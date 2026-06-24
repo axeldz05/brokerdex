@@ -4,19 +4,6 @@
 
 {% block content %}
 <style>
-    :root {
-        --bg-primary: #0d1117;
-        --bg-secondary: #161b22;
-        --bg-card: #1c2128;
-        --border-color: #30363d;
-        --text-primary: #e6edf3;
-        --text-secondary: #8b949e;
-        --accent-green: #3fb950;
-        --accent-red: #f85149;
-        --accent-blue: #58a6ff;
-        --accent-purple: #bc8cff;
-    }
-
     .portfolio-page {
         background: var(--bg-primary);
         min-height: 100vh;
@@ -102,6 +89,7 @@
     .portfolio-table {
         width: 100%;
         color: var(--text-primary);
+        border-collapse: collapse;
     }
     .portfolio-table thead th {
         font-size: 0.7rem;
@@ -111,6 +99,7 @@
         padding: 0.5rem 0.75rem;
         border-bottom: 1px solid var(--border-color);
         font-weight: 600;
+        background: var(--bg-secondary);
     }
     .portfolio-table tbody tr {
         border-bottom: 1px solid var(--border-color);
@@ -119,6 +108,10 @@
     }
     .portfolio-table tbody tr:hover {
         background: rgba(88, 166, 255, 0.04);
+    }
+    .portfolio-table tbody tr.selected {
+        background: rgba(88, 166, 255, 0.1);
+        border-left: 3px solid var(--accent-blue);
     }
     .portfolio-table tbody tr:last-child {
         border-bottom: none;
@@ -165,9 +158,83 @@
         color: var(--text-secondary);
     }
 
+    .detail-panel {
+        display: none;
+        margin-top: 1rem;
+        animation: fadeSlideIn 0.25s ease;
+    }
+    .detail-panel.show { display: block; }
+
+    @keyframes fadeSlideIn {
+        from { opacity: 0; transform: translateY(-8px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .stat-grid-sm {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.5rem;
+    }
+    .stat-item-sm {
+        background: var(--bg-secondary);
+        border-radius: 8px;
+        padding: 0.6rem;
+        text-align: center;
+    }
+    .stat-item-sm .label {
+        font-size: 0.6rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--text-secondary);
+    }
+    .stat-item-sm .value {
+        font-size: 0.95rem;
+        font-weight: 700;
+        margin-top: 0.1rem;
+    }
+
+    .training-card {
+        background: linear-gradient(135deg, rgba(188, 140, 255, 0.06), rgba(88, 166, 255, 0.06));
+        border: 1px solid rgba(188, 140, 255, 0.2);
+        border-radius: 10px;
+        padding: 1rem;
+        margin-top: 1rem;
+    }
+    .training-card h4 {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: var(--accent-purple);
+        margin-bottom: 0.75rem;
+    }
+
+    .icon-lg {
+        width: 48px;
+        height: 48px;
+        object-fit: contain;
+        border-radius: 8px;
+        background: var(--bg-secondary);
+        padding: 4px;
+    }
+
+    .recent-trades-list {
+        max-height: 200px;
+        overflow-y: auto;
+        font-size: 0.8rem;
+    }
+    .recent-trades-list .trade-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 0.35rem 0;
+        border-bottom: 1px solid var(--border-color);
+    }
+    .recent-trades-list .trade-row:last-child {
+        border-bottom: none;
+    }
+
     @media (max-width: 768px) {
         .summary-grid { grid-template-columns: repeat(2, 1fr); }
         .hide-mobile { display: none; }
+        .stat-grid-sm { grid-template-columns: repeat(2, 1fr); }
     }
 </style>
 
@@ -185,7 +252,6 @@
     </div>
 
     <div class="container py-4">
-        <!-- Summary Cards -->
         <div class="summary-grid">
             <div class="summary-card">
                 <div class="label">Total Value</div>
@@ -225,7 +291,6 @@
         </div>
 
         <div class="row g-4">
-            <!-- Holdings Table -->
             <div class="col-lg-8">
                 <div class="card-dark">
                     <h3>Holdings</h3>
@@ -245,7 +310,29 @@
                             </thead>
                             <tbody>
                                 {% for entry in entry_list %}
-                                <tr>
+                                <tr data-entry-id="{{ entry.pk }}"
+                                    data-creature-id="{{ entry.creature.id }}"
+                                    data-creature-name="{{ entry.creature.name }}"
+                                    data-creature-type="{{ entry.creature.type }}"
+                                    data-creature-type2="{{ entry.creature.secondary_type|default:'' }}"
+                                    data-creature-price="{{ entry.creature.current_price }}"
+                                    data-creature-icon="{{ entry.creature.small_icon_url|default:'' }}"
+                                    data-creature-large-icon="{{ entry.creature.large_icon_url|default:'' }}"
+                                    data-hp="{{ entry.creature.hp }}"
+                                    data-attack="{{ entry.creature.attack }}"
+                                    data-defense="{{ entry.creature.defense }}"
+                                    data-sp-atk="{{ entry.creature.special_attack }}"
+                                    data-sp-def="{{ entry.creature.special_defense }}"
+                                    data-speed="{{ entry.creature.speed }}"
+                                    data-legendary="{{ entry.creature.is_legendary|yesno:'true,false' }}"
+                                    data-mythical="{{ entry.creature.is_mythical|yesno:'true,false' }}"
+                                    data-description="{{ entry.creature.description|escapejs }}"
+                                    data-quantity="{{ entry.quantity }}"
+                                    data-avg-cost="{{ entry.average_cost }}"
+                                    data-curr-value="{{ entry.current_value }}"
+                                    data-pnl="{{ entry.unrealized_pnl }}"
+                                    data-pnl-pct="{{ entry.unrealized_pnl_pct }}"
+                                    data-training-cost="{{ entry.training_cost }}">
                                     <td>
                                         <div class="creature-cell">
                                             {% if entry.creature.small_icon_url %}
@@ -286,6 +373,108 @@
                             </tbody>
                         </table>
                     </div>
+
+                    <div class="detail-panel" id="detailPanel">
+                        <div class="row g-3">
+                            <div class="col-md-5">
+                                <div class="d-flex align-items-center gap-3 mb-3">
+                                    <img id="detailIcon" src="" alt="" class="icon-lg" style="display:none;">
+                                    <div id="detailIconPlaceholder" class="icon-lg d-flex align-items-center justify-content-center"
+                                         style="background:var(--bg-secondary); color:var(--text-secondary);">
+                                        <i class="bi bi-diamond-fill" style="font-size:20px;"></i>
+                                    </div>
+                                    <div>
+                                        <h4 id="detailName" style="margin:0; font-size:1.1rem; font-weight:700;"></h4>
+                                        <div id="detailBadges" class="d-flex gap-1 mt-1 flex-wrap"></div>
+                                    </div>
+                                </div>
+                                <p id="detailDescription" style="font-size:0.8rem; color:var(--text-secondary);"></p>
+                                <div class="d-flex gap-2 mt-2">
+                                    <a id="detailLink" href="#" class="btn btn-sm"
+                                       style="background:var(--accent-blue); color:#fff; border:none; border-radius:6px; padding:0.35rem 0.75rem; font-size:0.8rem;">
+                                        Full Detail →
+                                    </a>
+                                </div>
+
+                                <div class="mt-3">
+                                    <div style="font-size:0.7rem; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-secondary); margin-bottom:0.5rem;">
+                                        Recent Trades
+                                    </div>
+                                    <div id="detailTrades" class="recent-trades-list" style="color:var(--text-secondary);">
+                                        Loading...
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="col-md-4">
+                                <div style="font-size:0.7rem; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-secondary); margin-bottom:0.5rem;">
+                                    Base Stats
+                                </div>
+                                <div class="stat-grid-sm" id="detailStats"></div>
+
+                                <div class="mt-3">
+                                    <div style="font-size:0.7rem; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-secondary); margin-bottom:0.5rem;">
+                                        Your Position
+                                    </div>
+                                    <div style="font-size:0.85rem;">
+                                        <div class="d-flex justify-content-between" style="padding:0.3rem 0;">
+                                            <span style="color:var(--text-secondary);">Quantity</span>
+                                            <span id="detailQty" class="fw-bold"></span>
+                                        </div>
+                                        <div class="d-flex justify-content-between" style="padding:0.3rem 0;">
+                                            <span style="color:var(--text-secondary);">Avg Cost</span>
+                                            <span id="detailAvgCost"></span>
+                                        </div>
+                                        <div class="d-flex justify-content-between" style="padding:0.3rem 0;">
+                                            <span style="color:var(--text-secondary);">Market Price</span>
+                                            <span id="detailPrice" class="fw-bold"></span>
+                                        </div>
+                                        <div class="d-flex justify-content-between" style="padding:0.3rem 0;">
+                                            <span style="color:var(--text-secondary);">Current Value</span>
+                                            <span id="detailValue" class="fw-bold"></span>
+                                        </div>
+                                        <div class="d-flex justify-content-between" style="padding:0.3rem 0;">
+                                            <span style="color:var(--text-secondary);">P&L</span>
+                                            <span id="detailPnl" class="fw-bold"></span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="col-md-3">
+                                <div class="training-card">
+                                    <h4><i class="bi bi-lightning-charge me-1"></i>Training</h4>
+                                    <p style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:0.5rem;">
+                                        Boost a random stat. Cost is 10% of the creature's current market price.
+                                    </p>
+                                    <div class="d-flex justify-content-between" style="font-size:0.85rem; padding:0.3rem 0;">
+                                        <span style="color:var(--text-secondary);">Cost</span>
+                                        <span id="detailTrainingCost" class="fw-bold"></span>
+                                    </div>
+                                    <div class="d-flex justify-content-between" style="font-size:0.8rem; padding:0.3rem 0; color:var(--text-secondary);">
+                                        <span>Stat Boost</span>
+                                        <span>+1 ~ +5 random</span>
+                                    </div>
+                                    <div class="d-flex justify-content-between" style="font-size:0.8rem; padding:0.3rem 0; color:var(--text-secondary);">
+                                        <span>Duration</span>
+                                        <span>~30 seconds</span>
+                                    </div>
+                                    <div class="d-flex justify-content-between" style="font-size:0.8rem; padding:0.3rem 0; color:var(--text-secondary);">
+                                        <span>Affects</span>
+                                        <span>Single random stat</span>
+                                    </div>
+                                    <form method="POST" id="detailTrainForm" style="margin-top:0.75rem;">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-sm w-100"
+                                                style="background: var(--accent-purple); color: #fff; border: none; border-radius: 6px; padding: 0.5rem; font-size:0.8rem; font-weight:600;">
+                                            <i class="bi bi-lightning-charge me-1"></i>Train Creature
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     {% else %}
                     <div class="empty-state">
                         <i class="bi bi-briefcase d-block" style="font-size:3rem; opacity:0.5;"></i>
@@ -296,7 +485,6 @@
                 </div>
             </div>
 
-            <!-- Distribution Chart -->
             <div class="col-lg-4">
                 <div class="card-dark">
                     <h3>Distribution by Type</h3>
@@ -311,7 +499,6 @@
                     {% endif %}
                 </div>
 
-                <!-- Account Balance -->
                 <div class="card-dark mt-4">
                     <h3>Cash Balance</h3>
                     <div class="value" style="font-size:1.5rem; font-weight:700;">
@@ -344,6 +531,18 @@ const TYPE_COLORS = {
     'fairy': '#EE99AC', 'normal': '#A8A878', 'flying': '#A890F0',
     'ground': '#E0C068', 'rock': '#B8A038', 'bug': '#A8B820',
     'ghost': '#705898', 'ice': '#98D8D8', 'poison': '#A040A0',
+};
+
+const TYPE_BG = {
+    'fire': 'rgba(240,128,48,0.15)', 'water': 'rgba(104,144,240,0.15)',
+    'grass': 'rgba(120,200,80,0.15)', 'electric': 'rgba(248,208,48,0.15)',
+    'psychic': 'rgba(248,88,136,0.15)', 'fighting': 'rgba(192,48,40,0.15)',
+    'dark': 'rgba(112,88,72,0.15)', 'steel': 'rgba(184,184,208,0.15)',
+    'dragon': 'rgba(112,56,248,0.15)', 'fairy': 'rgba(238,153,172,0.15)',
+    'normal': 'rgba(168,168,120,0.15)', 'flying': 'rgba(168,144,240,0.15)',
+    'ground': 'rgba(224,192,104,0.15)', 'rock': 'rgba(184,160,56,0.15)',
+    'bug': 'rgba(168,184,32,0.15)', 'ghost': 'rgba(112,88,152,0.15)',
+    'ice': 'rgba(152,216,216,0.15)', 'poison': 'rgba(160,64,160,0.15)',
 };
 
 const labels = Object.keys(typeData);
@@ -383,11 +582,119 @@ new Chart(document.getElementById('distributionChart'), {
                 titleColor: '#e6edf3',
                 bodyColor: '#e6edf3',
                 callbacks: {
-                    label: (ctx) => `$${ctx.parsed.toFixed(2)}`
+                    label: (ctx) => '$' + ctx.parsed.toFixed(2)
                 }
             }
         }
     }
+});
+
+// --- Creature Detail Panel ---
+function selectCreature(row) {
+    document.querySelectorAll('.portfolio-table tbody tr').forEach(r => r.classList.remove('selected'));
+    row.classList.add('selected');
+
+    const panel = document.getElementById('detailPanel');
+    const d = row.dataset;
+
+    document.getElementById('detailName').textContent = d.creatureName;
+
+    const iconImg = document.getElementById('detailIcon');
+    const iconPH = document.getElementById('detailIconPlaceholder');
+    if (d.creatureLargeIcon || d.creatureIcon) {
+        iconImg.src = d.creatureLargeIcon || d.creatureIcon;
+        iconImg.style.display = 'block';
+        iconPH.style.display = 'none';
+    } else {
+        iconImg.style.display = 'none';
+        iconPH.style.display = 'flex';
+    }
+
+    const badges = document.getElementById('detailBadges');
+    badges.innerHTML = '';
+    const typeSpan = document.createElement('span');
+    typeSpan.className = 'type-badge';
+    typeSpan.style.cssText = 'color:' + (TYPE_COLORS[d.creatureType] || '#A8A878') + '; background:' + (TYPE_BG[d.creatureType] || 'rgba(168,168,120,0.15)') + ';';
+    typeSpan.textContent = d.creatureType;
+    badges.appendChild(typeSpan);
+
+    if (d.creatureType2) {
+        const type2Span = document.createElement('span');
+        type2Span.className = 'type-badge';
+        type2Span.style.cssText = 'color:' + (TYPE_COLORS[d.creatureType2] || '#A8A878') + '; background:' + (TYPE_BG[d.creatureType2] || 'rgba(168,168,120,0.15)') + ';';
+        type2Span.textContent = d.creatureType2;
+        badges.appendChild(type2Span);
+    }
+    if (d.legendary === 'true') {
+        const legSpan = document.createElement('span');
+        legSpan.className = 'type-badge';
+        legSpan.style.cssText = 'color:#F8D030; background:rgba(248,208,48,0.15);';
+        legSpan.textContent = 'Legendary';
+        badges.appendChild(legSpan);
+    }
+    if (d.mythical === 'true') {
+        const mythSpan = document.createElement('span');
+        mythSpan.className = 'type-badge';
+        mythSpan.style.cssText = 'color:#bc8cff; background:rgba(188,140,255,0.15);';
+        mythSpan.textContent = 'Mythical';
+        badges.appendChild(mythSpan);
+    }
+
+    document.getElementById('detailDescription').textContent = d.creatureDescription || '';
+
+    document.getElementById('detailLink').href = '/trading/creature/' + d.creatureId + '/';
+
+    const stats = document.getElementById('detailStats');
+    stats.innerHTML = [
+        {label:'HP', val:d.hp}, {label:'Attack', val:d.attack},
+        {label:'Defense', val:d.defense}, {label:'Sp. Atk', val:d.spAtk},
+        {label:'Sp. Def', val:d.spDef}, {label:'Speed', val:d.speed}
+    ].map(s =>
+        '<div class="stat-item-sm"><div class="label">' + s.label + '</div><div class="value">' + s.val + '</div></div>'
+    ).join('');
+
+    document.getElementById('detailQty').textContent = parseFloat(d.quantity).toFixed(4);
+    document.getElementById('detailAvgCost').textContent = '$' + parseFloat(d.avgCost).toFixed(2);
+    document.getElementById('detailPrice').textContent = '$' + parseFloat(d.creaturePrice).toFixed(2);
+    document.getElementById('detailValue').textContent = '$' + parseFloat(d.currValue).toFixed(2);
+    const pnl = parseFloat(d.pnl);
+    const pnlEl = document.getElementById('detailPnl');
+    pnlEl.textContent = (pnl >= 0 ? '+' : '') + '$' + pnl.toFixed(2) + ' (' + (parseFloat(d.pnlPct) >= 0 ? '+' : '') + parseFloat(d.pnlPct).toFixed(2) + '%)';
+    pnlEl.className = 'fw-bold ' + (pnl >= 0 ? 'positive' : 'negative');
+
+    document.getElementById('detailTrainingCost').textContent = '$' + parseFloat(d.trainingCost).toFixed(2);
+
+    const trainForm = document.getElementById('detailTrainForm');
+    trainForm.action = '/training/' + d.entryId + '/';
+
+    panel.classList.add('show');
+
+    fetch('/trading/api/price-history/' + d.creatureId + '/?interval=1H')
+        .then(r => r.json())
+        .then(data => {
+            const tradesContainer = document.getElementById('detailTrades');
+            if (data.data && data.data.length > 0) {
+                const recent = data.data.slice(-8).reverse();
+                tradesContainer.innerHTML = recent.map(t => {
+                    const dt = new Date(t.timestamp);
+                    const time = dt.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+                    const date = dt.toLocaleDateString([], {month:'short', day:'numeric'});
+                    return '<div class="trade-row"><span style="font-size:0.75rem;">' + date + ' ' + time + '</span><span class="fw-bold">$' + t.close.toFixed(2) + '</span></div>';
+                }).join('');
+            } else {
+                tradesContainer.textContent = 'No trades yet.';
+            }
+        })
+        .catch(() => {
+            document.getElementById('detailTrades').textContent = 'No trade data available.';
+        });
+}
+
+document.querySelectorAll('.portfolio-table tbody tr').forEach(row => {
+    row.addEventListener('click', function(e) {
+        if (e.target.closest('form') || e.target.closest('button')) return;
+        selectCreature(this);
+    });
 });
 </script>
 {% endif %}
