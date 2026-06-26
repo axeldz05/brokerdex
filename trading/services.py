@@ -409,42 +409,43 @@ class TradingEngine:
         Check and execute pending limit orders for a creature
         when the price crosses their threshold.
         """
-        current_price = creature.current_price
-        executed_count = 0
+        with transaction.atomic():
+            current_price = creature.current_price
+            executed_count = 0
 
-        # BUY limits: execute when current_price <= limit_price
-        buy_orders = Order.objects.filter(
-            creature=creature,
-            order_type=Order.OrderType.BUY,
-            execution_type=Order.ExecutionType.LIMIT,
-            status__in=[Order.Status.OPEN, Order.Status.PARTIALLY_FILLED],
-            limit_price__gte=current_price,
-        ).select_for_update()
+            # BUY limits: execute when current_price <= limit_price
+            buy_orders = Order.objects.filter(
+                creature=creature,
+                order_type=Order.OrderType.BUY,
+                execution_type=Order.ExecutionType.LIMIT,
+                status__in=[Order.Status.OPEN, Order.Status.PARTIALLY_FILLED],
+                limit_price__gte=current_price,
+            ).select_for_update()
 
-        for order in buy_orders:
-            try:
-                cls._execute_limit_buy(order, current_price)
-                executed_count += 1
-            except (ValidationError, Exception):
-                continue
+            for order in buy_orders:
+                try:
+                    cls._execute_limit_buy(order, current_price)
+                    executed_count += 1
+                except (ValidationError, Exception):
+                    continue
 
-        # SELL limits: execute when current_price >= limit_price
-        sell_orders = Order.objects.filter(
-            creature=creature,
-            order_type=Order.OrderType.SELL,
-            execution_type=Order.ExecutionType.LIMIT,
-            status__in=[Order.Status.OPEN, Order.Status.PARTIALLY_FILLED],
-            limit_price__lte=current_price,
-        ).select_for_update()
+            # SELL limits: execute when current_price >= limit_price
+            sell_orders = Order.objects.filter(
+                creature=creature,
+                order_type=Order.OrderType.SELL,
+                execution_type=Order.ExecutionType.LIMIT,
+                status__in=[Order.Status.OPEN, Order.Status.PARTIALLY_FILLED],
+                limit_price__lte=current_price,
+            ).select_for_update()
 
-        for order in sell_orders:
-            try:
-                cls._execute_limit_sell(order, current_price)
-                executed_count += 1
-            except (ValidationError, Exception):
-                continue
+            for order in sell_orders:
+                try:
+                    cls._execute_limit_sell(order, current_price)
+                    executed_count += 1
+                except (ValidationError, Exception):
+                    continue
 
-        return executed_count
+            return executed_count
 
     @classmethod
     def _execute_limit_buy(cls, order, execution_price):
