@@ -1,8 +1,8 @@
 # Brokerdex: AI Agent Context & Development Rules
 
-Este documento es la referencia única de arquitectura, convenciones y restricciones de Brokerdex. **Debe ser usado por el agente al inicio de cada sesión para entender el proyecto sin re-explorar.**
-
----
+STRICT RULES YOU MUST FOLLOW:
+- grep before read, discover existing patterns before implementing.
+- commit after each implemented functionality. Fix errors when appeared.
 
 ## 1. Domínio y Stack Tecnológico
 
@@ -267,3 +267,11 @@ python manage.py test trading creature
 - `python manage.py seed_all` — carga criaturas desde `seed_data/pokemon_data.json`, crea usuarios demo, precios iniciales, órdenes demo
 - `python manage.py generate_random_battle` — inicia una battle entre 2 criaturas
 - `python manage.py add_funds` — agrega fondos a un usuario
+
+---
+
+## 7. Memoria Evolutiva del Proyecto (Auto-Generado)
+
+*No modifiques esta sección manualmente. Se actualiza automáticamente al final de cada sesión mediante el script de destilación.*
+
+- **Última actualización:** Inicializado. Listo para registrar patrones descubiertos y mitigar bucles de corrección repetida.
