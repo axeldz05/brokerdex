@@ -162,6 +162,12 @@ class BattleService:
                 'next_turn_at',
             ])
 
+            # Snapshot pre-battle prices on participants (3NF: event snapshot)
+            participants = list(battle.participants.all())
+            for p in participants:
+                p.price_before = p.creature.current_price
+                p.save(update_fields=['price_before'])
+
         return battle
 
     @classmethod
@@ -222,6 +228,14 @@ class BattleService:
         from trading.services import PricingEngine
         PricingEngine.update_creature_price(c1)
         PricingEngine.update_creature_price(c2)
+
+        # Snapshot post-battle prices on participants (3NF: event snapshot)
+        c1.refresh_from_db(fields=['current_price'])
+        c2.refresh_from_db(fields=['current_price'])
+        p1.price_after = c1.current_price
+        p2.price_after = c2.current_price
+        p1.save(update_fields=['price_after'])
+        p2.save(update_fields=['price_after'])
 
         cls._create_battle_notifications(battle, participants)
 

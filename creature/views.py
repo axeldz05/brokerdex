@@ -1,4 +1,5 @@
 import logging
+from decimal import Decimal
 
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
@@ -148,16 +149,20 @@ def battle_detail_view(request, battle_id):
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         return JsonResponse(BattleService.battle_to_dict(battle))
 
-    # Compute actual price changes for finished battles
+    # Compute actual price changes for finished battles from snapshots
     price_changes = []
-    participants_list = list(battle.participants.all())
+    participants_list = list(battle.participants.select_related('creature').all())
     if battle.status == 'finished':
         for p in participants_list:
-            abs_val, pct = p.creature.price_change()
+            if p.price_before is not None and p.price_after is not None and p.price_before > 0:
+                abs_val = p.price_after - p.price_before
+                pct = (abs_val / p.price_before) * 100
+            else:
+                abs_val, pct = Decimal('0'), Decimal('0')
             price_changes.append({
                 'name': p.creature.name,
-                'pct': pct,
-                'abs': abs_val,
+                'pct': round(float(pct), 2),
+                'abs': round(abs_val, 2),
                 'won': bool(battle.winner and battle.winner.pk == p.pk),
             })
 

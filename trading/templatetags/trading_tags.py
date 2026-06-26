@@ -66,3 +66,16 @@ def percent_of(value, percent):
         return (Decimal(str(value)) * Decimal(str(percent)) / 100).quantize(Decimal('0.01'))
     except:
         return Decimal('0')
+
+
+@register.filter
+def price_delta_pct(participant):
+    """Returns (pct, is_positive) as tuple for a BattleParticipant with price snapshots."""
+    try:
+        if participant.price_before and participant.price_after and participant.price_before > 0:
+            delta = participant.price_after - participant.price_before
+            pct = (delta / participant.price_before) * 100
+            return round(float(pct), 2)
+    except Exception:
+        pass
+    return None

@@ -97,7 +97,23 @@
                             {% endif %}
                         </div>
                     {% else %}
-                        <div class="col-12">
+                        {% with pct1=p1|price_delta_pct pct2=p2|price_delta_pct %}
+                        <div class="col-6">
+                            {% if pct1 is not None %}
+                            <span class="{% if pct1 >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                {{ c1.name }}: {% if pct1 >= 0 %}▲{% else %}▼{% endif %} {{ pct1|floatformat:2 }}%
+                            </span>
+                            {% endif %}
+                        </div>
+                        <div class="col-6">
+                            {% if pct2 is not None %}
+                            <span class="{% if pct2 >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                {{ c2.name }}: {% if pct2 >= 0 %}▲{% else %}▼{% endif %} {{ pct2|floatformat:2 }}%
+                            </span>
+                            {% endif %}
+                        </div>
+                        {% endwith %}
+                        <div class="col-12 mt-1">
                             <span class="fw-bold">
                                 Winner:
                                 {% if battle.winner %}
