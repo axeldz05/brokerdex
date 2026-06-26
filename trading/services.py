@@ -108,8 +108,9 @@ class PricingEngine:
         multiplier = (1 + battle_delta + market_delta) * rarity
         new_price = base_price * multiplier
 
-        # Floor at $0.01
-        return max(new_price, Decimal('0.01')).quantize(Decimal('0.01'))
+        # Floor at $0.01, cap at Decimal(12,2) max to avoid DB overflow
+        MAX_PRICE = Decimal('9999999999.99')
+        return max(min(new_price, MAX_PRICE), Decimal('0.01')).quantize(Decimal('0.01'))
 
     @classmethod
     def update_creature_price(cls, creature):
