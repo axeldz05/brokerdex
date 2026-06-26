@@ -353,6 +353,12 @@ class BattleParticipant(models.Model):
     defense_stage = models.IntegerField(default=0)
     status_ailment = models.CharField(max_length=20, null=True, blank=True)
 
+    # Price snapshots for battle valuation display (3NF: depend on composite key)
+    price_before = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True,
+                                       help_text="Creature price when battle started")
+    price_after = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True,
+                                      help_text="Creature price after battle finished")
+
     class Meta:
         unique_together = ['battle', 'creature']
 

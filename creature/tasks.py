@@ -4,9 +4,10 @@ from django.conf import settings
 from datetime import timedelta
 from .models import Creature, Battle, Incubation
 from .services import IncubationService, TrainingService, BattleService
+from redis.exceptions import ConnectionError as RedisConnectionError
 import random
 
-@shared_task
+@shared_task(autoretry_for=(RedisConnectionError,), retry_backoff=True, max_retries=3)
 def matchmake_random_battle():
     now = timezone.now()
     available_creatures = Creature.objects.filter(
@@ -14,7 +15,7 @@ def matchmake_random_battle():
         cooldown_expires_at__lte=now
     ).order_by('?')[:2]
 
-    if available_creatures.count() == 2:
+    if len(available_creatures) == 2:
         c1, c2 = available_creatures
         battle = BattleService.start_battle(c1, c2)
         turn_interval = getattr(settings, 'BATTLE_TURN_INTERVAL', 180)
@@ -23,7 +24,7 @@ def matchmake_random_battle():
 
     return "Not enough creatures to start a battle."
 
-@shared_task
+@shared_task(autoretry_for=(RedisConnectionError,), retry_backoff=True, max_retries=3)
 def process_battle_turn(battle_id):
     try:
         battle = Battle.objects.get(id=battle_id, status='active')
@@ -50,8 +51,17 @@ def process_battle_turn(battle_id):
         return f"The creature {attacker.creature.name} has no abilities"
     ability = random.choice(abilities)
     power = ability.power if ability.power else 10
-    raw_damage = (power * attacker.creature.attack) / defender.creature.defense
-    damage = max(1, int(raw_damage))
+    # Use appropriate attack/defense based on move damage class
+    if ability.damage_class == 'special':
+        attack_stat = attacker.creature.special_attack
+        defense_stat = defender.creature.special_defense
+    else:
+        attack_stat = attacker.creature.attack
+        defense_stat = defender.creature.defense
+    # Scaled damage formula: (power * attack / defense) / 2.5 with 85-100% random factor
+    raw_damage = (power * attack_stat / max(defense_stat, 1)) / 2.5
+    random_factor = random.randint(85, 100) / 100.0
+    damage = max(1, int(raw_damage * random_factor))
 
     battle.record_action(
         actor_participant=attacker,
