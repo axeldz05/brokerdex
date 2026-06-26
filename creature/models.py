@@ -361,6 +361,7 @@ class BattleParticipant(models.Model):
 
     class Meta:
         unique_together = ['battle', 'creature']
+        ordering = ['id']  # Consistent participant order: p1 first, p2 second
 
 class BattleAction(models.Model):
     battle = models.ForeignKey(Battle, on_delete=models.CASCADE, related_name='actions')

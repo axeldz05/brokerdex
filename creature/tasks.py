@@ -1,3 +1,5 @@
+import logging
+
 from celery import shared_task
 from django.utils import timezone
 from django.conf import settings
@@ -6,6 +8,8 @@ from .models import Creature, Battle, Incubation
 from .services import IncubationService, TrainingService, BattleService
 from redis.exceptions import ConnectionError as RedisConnectionError
 import random
+
+logger = logging.getLogger(__name__)
 
 @shared_task(autoretry_for=(RedisConnectionError,), retry_backoff=True, max_retries=3)
 def matchmake_random_battle():
@@ -31,61 +35,71 @@ def process_battle_turn(battle_id):
     except Battle.DoesNotExist:
         return f"The battle {battle_id} was terminated or doesn't exist."
 
-    participants = list(battle.participants.select_related('creature').all())
-    if len(participants) != 2:
-        return "Error: invalid amount of participants"
+    try:
+        participants = list(battle.participants.select_related('creature').all())
+        if len(participants) != 2:
+            return "Error: invalid amount of participants"
 
-    # Record investments from the previous turn before processing this one
-    previous_turn = battle.current_turn - 1
-    if previous_turn >= 1:
-        BattleService.record_turn_investments(battle, previous_turn)
+        # Record investments from the previous turn before processing this one
+        previous_turn = battle.current_turn - 1
+        if previous_turn >= 1:
+            BattleService.record_turn_investments(battle, previous_turn)
 
-    # Uneven = participant 1 attacks, Even = participant 2 attacks)
-    if battle.current_turn % 2 != 0:
-        attacker, defender = participants[0], participants[1]
-    else:
-        attacker, defender = participants[1], participants[0]
+        # Uneven = participant 1 attacks, Even = participant 2 attacks)
+        if battle.current_turn % 2 != 0:
+            attacker, defender = participants[0], participants[1]
+        else:
+            attacker, defender = participants[1], participants[0]
 
-    abilities = list(attacker.creature.abilities.all())
-    if not abilities:
-        return f"The creature {attacker.creature.name} has no abilities"
-    ability = random.choice(abilities)
-    power = ability.power if ability.power else 10
-    # Use appropriate attack/defense based on move damage class
-    if ability.damage_class == 'special':
-        attack_stat = attacker.creature.special_attack
-        defense_stat = defender.creature.special_defense
-    else:
-        attack_stat = attacker.creature.attack
-        defense_stat = defender.creature.defense
-    # Scaled damage formula: (power * attack / defense) / 2.5 with 85-100% random factor
-    raw_damage = (power * attack_stat / max(defense_stat, 1)) / 2.5
-    random_factor = random.randint(85, 100) / 100.0
-    damage = max(1, int(raw_damage * random_factor))
+        abilities = list(attacker.creature.abilities.all())
+        if not abilities:
+            return f"The creature {attacker.creature.name} has no abilities"
+        ability = random.choice(abilities)
+        power = ability.power if ability.power else 10
+        # Use appropriate attack/defense based on move damage class
+        if ability.damage_class == 'special':
+            attack_stat = attacker.creature.special_attack
+            defense_stat = defender.creature.special_defense
+        else:
+            attack_stat = attacker.creature.attack
+            defense_stat = defender.creature.defense
+        # Scaled damage formula: (power * attack / defense) / 2.5 with 85-100% random factor
+        raw_damage = (power * attack_stat / max(defense_stat, 1)) / 2.5
+        random_factor = random.randint(85, 100) / 100.0
+        damage = max(1, int(raw_damage * random_factor))
 
-    battle.record_action(
-        actor_participant=attacker,
-        target_participant=defender,
-        ability=ability,
-        damage=damage
-    )
+        battle.record_action(
+            actor_participant=attacker,
+            target_participant=defender,
+            ability=ability,
+            damage=damage
+        )
 
-    battle.refresh_from_db()
+        battle.refresh_from_db()
 
-    if battle.status == 'active':
+        if battle.status == 'active':
+            turn_interval = getattr(settings, 'BATTLE_TURN_INTERVAL', 180)
+            battle.next_turn_at = timezone.now() + timedelta(seconds=turn_interval)
+            battle.save(update_fields=['next_turn_at'])
+            process_battle_turn.apply_async(args=[battle.id], countdown=turn_interval)
+            return f"Turn {battle.current_turn - 1} processed. Next turn in {turn_interval}s."
+        else:
+            # Record investments for the final turn
+            BattleService.record_turn_investments(battle, battle.current_turn)
+            # Process ELO and price changes
+            BattleService.process_battle_result(battle)
+
+            winner_name = battle.winner.creature.name if battle.winner else "Draw"
+            return f"Battle {battle.id} has finished! Winner: {winner_name}"
+
+    except Battle.DoesNotExist:
+        return f"Battle {battle_id} was already removed."
+    except Exception:
+        logger.exception(f"process_battle_turn failed for battle {battle_id}")
+        # Re-schedule to keep the chain alive despite transient errors
         turn_interval = getattr(settings, 'BATTLE_TURN_INTERVAL', 180)
-        battle.next_turn_at = timezone.now() + timedelta(seconds=turn_interval)
-        battle.save(update_fields=['next_turn_at'])
-        process_battle_turn.apply_async(args=[battle.id], countdown=turn_interval)
-        return f"Turn {battle.current_turn - 1} processed. Next turn in {turn_interval}s."
-    else:
-        # Record investments for the final turn
-        BattleService.record_turn_investments(battle, battle.current_turn)
-        # Process ELO and price changes
-        BattleService.process_battle_result(battle)
-
-        winner_name = battle.winner.creature.name if battle.winner else "Draw"
-        return f"Battle {battle.id} has finished! Winner: {winner_name}"
+        process_battle_turn.apply_async(args=[battle_id], countdown=turn_interval)
+        return f"Battle {battle_id} turn failed, re-scheduled."
 
 
 @shared_task
