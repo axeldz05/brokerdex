@@ -36,6 +36,7 @@ dependencies = [
     { name = "django-filter" },
     { name = "django-stubs", extra = ["compatible-mypy"] },
     { name = "djangorestframework" },
+    { name = "honcho" },
     { name = "pillow" },
     { name = "psycopg" },
     { name = "redis" },
@@ -52,6 +53,7 @@ requires-dist = [
     { name = "django-filter", specifier = ">=25.2" },
     { name = "django-stubs", extras = ["compatible-mypy"], specifier = ">=5.2.8" },
     { name = "djangorestframework", specifier = ">=3.16.1" },
+    { name = "honcho", specifier = ">=2.0.0" },
     { name = "pillow", specifier = ">=11.3.0" },
     { name = "psycopg", specifier = ">=3.2.10" },
     { name = "redis", specifier = ">=7.2.1" },
@@ -248,6 +250,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/8a/95/5376fe618646fde6899b3cdc85fd959716bb67542e273a76a80d9f326f27/djangorestframework-3.16.1.tar.gz", hash = "sha256:166809528b1aced0a17dc66c24492af18049f2c9420dbd0be29422029cfc3ff7", size = 1089735, upload-time = "2025-08-06T17:50:53.251Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b0/ce/bf8b9d3f415be4ac5588545b5fcdbbb841977db1c1d923f7568eeabe1689/djangorestframework-3.16.1-py3-none-any.whl", hash = "sha256:33a59f47fb9c85ede792cbf88bde71893bcda0667bc573f784649521f1102cec", size = 1080442, upload-time = "2025-08-06T17:50:50.667Z" },
+]
+
+[[package]]
+name = "honcho"
+version = "2.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/65/c8/d860888358bf5c8a6e7d78d1b508b59b0e255afd5655f243b8f65166dafd/honcho-2.0.0.tar.gz", hash = "sha256:af3815c03c634bf67d50f114253ea9fef72ecff26e4fd06b29234789ac5b8b2e", size = 45618, upload-time = "2024-10-06T14:26:53.871Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/48/1c/25631fc359955569e63f5446dbb7022c320edf9846cbe892ee5113433a7e/honcho-2.0.0-py3-none-any.whl", hash = "sha256:56dcd04fc72d362a4befb9303b1a1a812cba5da283526fbc6509be122918ddf3", size = 22093, upload-time = "2024-10-06T14:26:52.181Z" },
 ]
 
 [[package]]
