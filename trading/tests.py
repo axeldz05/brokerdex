@@ -1,8 +1,10 @@
 from decimal import Decimal
 from datetime import timedelta
+from threading import Barrier, Thread
 
-from django.test import TestCase
 from django.core.exceptions import ValidationError
+from django.db import close_old_connections
+from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 
 from account.models import Account
@@ -49,7 +51,8 @@ class TradingEngineTestCase(TestCase):
         )
 
         self.buyer.refresh_from_db()
-        portfolio = Portfolio.objects.get(owner=self.buyer, creature=self.creature)
+        portfolio = Portfolio.objects.get(
+            owner=self.buyer, creature=self.creature)
 
         # Price: $100 × 2 = $200, Commission: $200 × 1.5% = $3
         self.assertEqual(trade.price_per_unit, Decimal('100.00'))
@@ -82,7 +85,8 @@ class TradingEngineTestCase(TestCase):
         )
 
         self.seller.refresh_from_db()
-        portfolio = Portfolio.objects.get(owner=self.seller, creature=self.creature)
+        portfolio = Portfolio.objects.get(
+            owner=self.seller, creature=self.creature)
 
         self.assertEqual(trade.quantity, Decimal('3'))
         self.assertEqual(portfolio.quantity, Decimal('2'))
@@ -113,7 +117,9 @@ class TradingEngineTestCase(TestCase):
             self.buyer, self.creature, Decimal('2')
         )
         self.assertFalse(
-            Portfolio.objects.filter(owner=self.buyer, creature=self.creature).exists()
+            Portfolio.objects.filter(
+                owner=self.buyer,
+                creature=self.creature).exists()
         )
 
     def test_multiple_buys_update_average_cost(self):
@@ -129,7 +135,8 @@ class TradingEngineTestCase(TestCase):
             self.buyer, self.creature, Decimal('2')
         )
 
-        portfolio = Portfolio.objects.get(owner=self.buyer, creature=self.creature)
+        portfolio = Portfolio.objects.get(
+            owner=self.buyer, creature=self.creature)
         self.assertEqual(portfolio.quantity, Decimal('4'))
         # Weighted avg: (2*100 + 2*150) / 4 = 125
         self.assertEqual(portfolio.average_cost, Decimal('125.00'))
@@ -145,8 +152,8 @@ class TradingEngineTestCase(TestCase):
 
         # Funds should be reserved
         self.buyer.refresh_from_db()
-        # Reserved: 3 × $80 + commission (3 × 80 × 0.015) = $240 + $3.60 = $243.60
-        reserved = int(Decimal('243.60') * 100)
+        # The 3% reservation cap covers 1.5% commissions rounded per fill.
+        reserved = int(Decimal('247.20') * 100)
         expected_balance = 100_000_00 - reserved
         self.assertEqual(self.buyer.balance_cents, expected_balance)
 
@@ -173,6 +180,352 @@ class TradingEngineTestCase(TestCase):
         order = trade.buy_order
         with self.assertRaises(ValidationError):
             TradingEngine.cancel_order(order)
+
+    def test_market_orders_reject_non_positive_quantity(self):
+        Portfolio.objects.create(
+            owner=self.seller,
+            creature=self.creature,
+            quantity=Decimal('1'),
+            average_cost=Decimal('100.00'),
+        )
+
+        for quantity in (Decimal('0'), Decimal('-1')):
+            with self.subTest(quantity=quantity):
+                with self.assertRaises(ValidationError):
+                    TradingEngine.execute_market_buy(
+                        self.buyer, self.creature, quantity
+                    )
+                with self.assertRaises(ValidationError):
+                    TradingEngine.execute_market_sell(
+                        self.seller, self.creature, quantity
+                    )
+
+    def test_orders_reject_notional_below_one_cent(self):
+        self.creature.current_price = Decimal('0.01')
+        self.creature.save(update_fields=['current_price'])
+        Portfolio.objects.create(
+            owner=self.seller,
+            creature=self.creature,
+            quantity=Decimal('1'),
+            average_cost=Decimal('0.01'),
+        )
+
+        with self.assertRaises(ValidationError):
+            TradingEngine.execute_market_buy(
+                self.buyer, self.creature, Decimal('0.5')
+            )
+        with self.assertRaises(ValidationError):
+            TradingEngine.execute_market_sell(
+                self.seller, self.creature, Decimal('0.5')
+            )
+        with self.assertRaises(ValidationError):
+            TradingEngine.place_limit_order(
+                self.buyer,
+                self.creature,
+                Order.OrderType.BUY,
+                Decimal('0.5'),
+                Decimal('0.01'),
+            )
+
+    def test_money_conversions_round_to_nearest_cent(self):
+        self.creature.current_price = Decimal('0.05')
+        self.creature.save(update_fields=['current_price'])
+
+        TradingEngine.execute_market_buy(
+            self.buyer, self.creature, Decimal('0.3')
+        )
+        self.buyer.refresh_from_db()
+
+        self.assertEqual(self.buyer.balance_cents, 100_000_00 - 2)
+
+        Portfolio.objects.create(
+            owner=self.seller,
+            creature=self.creature,
+            quantity=Decimal('0.3'),
+            average_cost=Decimal('0.05'),
+        )
+        initial_seller_balance = self.seller.balance_cents
+        TradingEngine.execute_market_sell(
+            self.seller, self.creature, Decimal('0.3')
+        )
+        self.seller.refresh_from_db()
+        self.assertEqual(
+            self.seller.balance_cents,
+            initial_seller_balance + 2,
+        )
+
+    def test_limit_buy_execution_fills_order_and_refunds_difference(self):
+        order = TradingEngine.place_limit_order(
+            self.buyer,
+            self.creature,
+            Order.OrderType.BUY,
+            Decimal('2'),
+            Decimal('100.00'),
+        )
+        self.creature.current_price = Decimal('80.00')
+        self.creature.save(update_fields=['current_price'])
+
+        executed = TradingEngine.check_limit_orders(self.creature)
+
+        order.refresh_from_db()
+        self.buyer.refresh_from_db()
+        portfolio = Portfolio.objects.get(
+            owner=self.buyer,
+            creature=self.creature,
+        )
+        trade = Trade.objects.get(buy_order=order)
+        self.assertEqual(executed, 1)
+        self.assertEqual(order.status, Order.Status.FILLED)
+        self.assertEqual(order.filled_quantity, Decimal('2'))
+        self.assertEqual(portfolio.quantity, Decimal('2'))
+        self.assertEqual(trade.price_per_unit, Decimal('80.00'))
+        self.assertEqual(trade.commission, Decimal('2.40'))
+        self.assertEqual(self.buyer.balance_cents, 100_000_00 - 16_240)
+
+    def test_limit_sell_execution_fills_order(self):
+        Portfolio.objects.create(
+            owner=self.seller,
+            creature=self.creature,
+            quantity=Decimal('5'),
+            average_cost=Decimal('100.00'),
+        )
+        order = TradingEngine.place_limit_order(
+            self.seller,
+            self.creature,
+            Order.OrderType.SELL,
+            Decimal('3'),
+            Decimal('120.00'),
+        )
+        initial_balance = self.seller.balance_cents
+        self.creature.current_price = Decimal('130.00')
+        self.creature.save(update_fields=['current_price'])
+
+        executed = TradingEngine.check_limit_orders(self.creature)
+
+        order.refresh_from_db()
+        self.seller.refresh_from_db()
+        portfolio = Portfolio.objects.get(
+            owner=self.seller,
+            creature=self.creature,
+        )
+        self.assertEqual(executed, 1)
+        self.assertEqual(order.status, Order.Status.FILLED)
+        self.assertEqual(portfolio.quantity, Decimal('2'))
+        self.assertEqual(self.seller.balance_cents, initial_balance + 38_415)
+        self.assertTrue(Trade.objects.filter(sell_order=order).exists())
+
+    def test_limit_orders_respect_circuit_breaker(self):
+        self.creature.circuit_breaker_expires_at = (
+            timezone.now() + timedelta(minutes=15)
+        )
+        self.creature.save(update_fields=['circuit_breaker_expires_at'])
+
+        with self.assertRaises(ValidationError):
+            TradingEngine.place_limit_order(
+                self.buyer,
+                self.creature,
+                Order.OrderType.BUY,
+                Decimal('1'),
+                Decimal('100.00'),
+            )
+
+    def test_market_order_rechecks_circuit_breaker_from_database(self):
+        stale_creature = Creature.objects.get(pk=self.creature.pk)
+        Creature.objects.filter(pk=self.creature.pk).update(
+            circuit_breaker_expires_at=(
+                timezone.now() + timedelta(minutes=15)
+            )
+        )
+
+        with self.assertRaises(ValidationError):
+            TradingEngine.execute_market_buy(
+                self.buyer,
+                stale_creature,
+                Decimal('1'),
+            )
+
+    def test_pending_limit_order_does_not_execute_during_halt(self):
+        order = TradingEngine.place_limit_order(
+            self.buyer,
+            self.creature,
+            Order.OrderType.BUY,
+            Decimal('1'),
+            Decimal('100.00'),
+        )
+        self.creature.current_price = Decimal('80.00')
+        self.creature.circuit_breaker_expires_at = (
+            timezone.now() + timedelta(minutes=15)
+        )
+        self.creature.save(
+            update_fields=['current_price', 'circuit_breaker_expires_at']
+        )
+
+        executed = TradingEngine.check_limit_orders(self.creature)
+
+        order.refresh_from_db()
+        self.assertEqual(executed, 0)
+        self.assertEqual(order.status, Order.Status.OPEN)
+        self.assertFalse(Trade.objects.filter(buy_order=order).exists())
+
+    def test_limit_sells_cannot_overcommit_holdings(self):
+        Portfolio.objects.create(
+            owner=self.seller,
+            creature=self.creature,
+            quantity=Decimal('5'),
+            average_cost=Decimal('100.00'),
+        )
+        TradingEngine.place_limit_order(
+            self.seller,
+            self.creature,
+            Order.OrderType.SELL,
+            Decimal('3'),
+            Decimal('120.00'),
+        )
+
+        with self.assertRaises(ValidationError):
+            TradingEngine.place_limit_order(
+                self.seller,
+                self.creature,
+                Order.OrderType.SELL,
+                Decimal('3'),
+                Decimal('130.00'),
+            )
+
+    def test_partial_limit_sell_reserves_only_remaining_quantity(self):
+        Portfolio.objects.create(
+            owner=self.seller,
+            creature=self.creature,
+            quantity=Decimal('5'),
+            average_cost=Decimal('100.00'),
+        )
+        Order.objects.create(
+            account=self.seller,
+            creature=self.creature,
+            order_type=Order.OrderType.SELL,
+            execution_type=Order.ExecutionType.LIMIT,
+            quantity=Decimal('3'),
+            filled_quantity=Decimal('1'),
+            limit_price=Decimal('120.00'),
+            reserved_quantity=Decimal('2'),
+            status=Order.Status.PARTIALLY_FILLED,
+        )
+
+        order = TradingEngine.place_limit_order(
+            self.seller,
+            self.creature,
+            Order.OrderType.SELL,
+            Decimal('3'),
+            Decimal('130.00'),
+        )
+
+        self.assertEqual(order.status, Order.Status.OPEN)
+
+    def test_market_sell_cannot_use_holdings_reserved_by_limit_orders(self):
+        Portfolio.objects.create(
+            owner=self.seller,
+            creature=self.creature,
+            quantity=Decimal('5'),
+            average_cost=Decimal('100.00'),
+        )
+        TradingEngine.place_limit_order(
+            self.seller,
+            self.creature,
+            Order.OrderType.SELL,
+            Decimal('4'),
+            Decimal('120.00'),
+        )
+
+        with self.assertRaises(ValidationError):
+            TradingEngine.execute_market_sell(
+                self.seller,
+                self.creature,
+                Decimal('2'),
+            )
+
+
+class LimitOrderConcurrencyTestCase(TransactionTestCase):
+    def setUp(self):
+        self.account = Account.objects.create_user(
+            username='limit_race',
+            email='limit-race@example.com',
+            password='testpass123',
+        )
+        self.account.balance_cents = 100_000
+        self.account.save(update_fields=['balance_cents'])
+        self.creature = Creature.objects.create(
+            name='LimitRaceCreature',
+            type='water',
+            current_price=Decimal('100.00'),
+            previous_close=Decimal('100.00'),
+            hp=50,
+            attack=50,
+            defense=50,
+            battle_cooldown=timedelta(hours=1),
+            description='A creature for a limit order race.',
+        )
+        self.order = TradingEngine.place_limit_order(
+            self.account,
+            self.creature,
+            Order.OrderType.BUY,
+            Decimal('2'),
+            Decimal('100.00'),
+        )
+
+    def test_fill_and_cancel_cannot_both_apply(self):
+        barrier = Barrier(2)
+        errors = []
+
+        def execute():
+            close_old_connections()
+            try:
+                order = Order.objects.get(pk=self.order.pk)
+                barrier.wait()
+                TradingEngine._execute_limit_buy(
+                    order,
+                    Decimal('80.00'),
+                )
+            except ValidationError as error:
+                errors.append(error)
+            finally:
+                close_old_connections()
+
+        def cancel():
+            close_old_connections()
+            try:
+                order = Order.objects.get(pk=self.order.pk)
+                barrier.wait()
+                TradingEngine.cancel_order(order)
+            except ValidationError as error:
+                errors.append(error)
+            finally:
+                close_old_connections()
+
+        threads = [Thread(target=execute), Thread(target=cancel)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=10)
+
+        self.assertTrue(all(not thread.is_alive() for thread in threads))
+        self.order.refresh_from_db()
+        self.account.refresh_from_db()
+        trade_exists = Trade.objects.filter(buy_order=self.order).exists()
+        portfolio = Portfolio.objects.filter(
+            owner=self.account,
+            creature=self.creature,
+        ).first()
+
+        if self.order.status == Order.Status.FILLED:
+            self.assertTrue(trade_exists)
+            self.assertIsNotNone(portfolio)
+            self.assertEqual(portfolio.quantity, Decimal('2'))
+            self.assertEqual(self.account.balance_cents, 83_760)
+        else:
+            self.assertEqual(self.order.status, Order.Status.CANCELLED)
+            self.assertFalse(trade_exists)
+            self.assertIsNone(portfolio)
+            self.assertEqual(self.account.balance_cents, 100_000)
+        self.assertEqual(len(errors), 1)
 
 
 class PricingEngineTestCase(TestCase):

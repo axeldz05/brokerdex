@@ -1,19 +1,28 @@
 import json
-from collections import defaultdict
-from datetime import datetime
 from decimal import Decimal
 
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
-from django.db.models import Sum, Q
 from django.http import JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 
+from account.money import cents_to_dollars
 from creature.models import Creature
-from banking.models import Transfer
+from .accounting import (
+    compute_income_expenses,
+    normalize_period,
+    summarize_portfolio_entries,
+)
 from .forms import MarketOrderForm, LimitOrderForm
-from .models import Order, Trade, Portfolio, PriceHistory, MarketIndex, Notification
+from .models import (
+    MarketIndex,
+    Notification,
+    Order,
+    Portfolio,
+    PriceHistory,
+    Trade,
+)
 from .services import TradingEngine
 from creature.services import TrainingService, BattleService
 
@@ -98,6 +107,15 @@ def creature_detail_view(request, creature_id):
     })
 
 
+def _market_execution_message(action, quantity, creature, order):
+    summary = order.execution_summary()
+    return (
+        f"{action} {quantity} {creature.name} "
+        f"@ ${summary['average_price']}. "
+        f"Commission: ${summary['commission']}."
+    )
+
+
 @login_required
 def place_order_view(request):
     """
@@ -146,8 +164,12 @@ def place_order_view(request):
                     )
                     messages.success(
                         request,
-                        f"Bought {quantity} {creature.name} @ ${trade.price_per_unit}. "
-                        f"Commission: ${trade.commission}."
+                        _market_execution_message(
+                            'Bought',
+                            quantity,
+                            creature,
+                            trade.buy_order,
+                        )
                     )
                 else:
                     trade = TradingEngine.execute_market_sell(
@@ -157,8 +179,12 @@ def place_order_view(request):
                     )
                     messages.success(
                         request,
-                        f"Sold {quantity} {creature.name} @ ${trade.price_per_unit}. "
-                        f"Commission: ${trade.commission}."
+                        _market_execution_message(
+                            'Sold',
+                            quantity,
+                            creature,
+                            trade.sell_order,
+                        )
                     )
             except ValidationError as e:
                 messages.error(request, str(e.message))
@@ -171,106 +197,18 @@ def place_order_view(request):
             return redirect('trading:creature_detail', creature_id=creature_id)
 
 
-def _compute_income_expenses(user, period='monthly'):
-    """Returns income, expenses, and net data grouped by month or year."""
-    user_trades = Trade.objects.filter(
-        Q(buyer=user) | Q(seller=user)
-    ).select_related('creature')
-
-    user_transfers = Transfer.objects.filter(
-        Q(sender=user) | Q(receiver=user),
-        status=Transfer.TransactionStatus.COMPLETED,
-    )
-
-    if period == 'monthly':
-        def key_fn(dt):
-            return dt.strftime('%Y-%m')
-        def label_fn(key):
-            return datetime.strptime(key, '%Y-%m').strftime('%b %Y')
-    else:
-        def key_fn(dt):
-            return str(dt.year)
-        def label_fn(key):
-            return key
-
-    income_monthly = defaultdict(lambda: {'sales': Decimal('0'), 'deposits': Decimal('0'), 'transfers_in': Decimal('0')})
-    expenses_monthly = defaultdict(lambda: {'purchases': Decimal('0'), 'withdrawals': Decimal('0'), 'transfers_out': Decimal('0'), 'commissions': Decimal('0')})
-
-    for t in user_trades:
-        dt = t.executed_at
-        if tz := getattr(dt, 'tzinfo', None):
-            dt = dt.astimezone(datetime.now().astimezone().tzinfo)
-        dt_naive = dt.replace(tzinfo=None) if getattr(dt, 'tzinfo', None) else dt
-        k = key_fn(dt_naive)
-        if t.buyer == user:
-            expenses_monthly[k]['purchases'] += t.total_amount + t.commission
-            expenses_monthly[k]['commissions'] += t.commission
-        if t.seller == user:
-            income_monthly[k]['sales'] += t.total_amount - t.commission
-            expenses_monthly[k]['commissions'] += t.commission
-
-    for tr in user_transfers:
-        dt = tr.date
-        if tz := getattr(dt, 'tzinfo', None):
-            dt = dt.astimezone(datetime.now().astimezone().tzinfo)
-        dt_naive = dt.replace(tzinfo=None) if getattr(dt, 'tzinfo', None) else dt
-        k = key_fn(dt_naive)
-        amount = Decimal(tr.amount) / Decimal('100')
-        if tr.type == Transfer.TransactionType.DEPOSIT and tr.receiver == user:
-            income_monthly[k]['deposits'] += amount
-        elif tr.type == Transfer.TransactionType.WITHDRAW and tr.sender == user:
-            expenses_monthly[k]['withdrawals'] += amount
-        elif tr.type == Transfer.TransactionType.TRANSFER:
-            if tr.receiver == user:
-                income_monthly[k]['transfers_in'] += amount
-            elif tr.sender == user:
-                expenses_monthly[k]['transfers_out'] += amount
-
-    all_keys = sorted(set(list(income_monthly.keys()) + list(expenses_monthly.keys())))
-    if period == 'monthly':
-        all_keys = all_keys[-12:]
-
-    income_data = []
-    expenses_data = []
-    net_data = []
-
-    for k in all_keys:
-        inc = income_monthly[k]
-        exp = expenses_monthly[k]
-        total_income = inc['sales'] + inc['deposits'] + inc['transfers_in']
-        total_expenses = exp['purchases'] + exp['withdrawals'] + exp['transfers_out'] + exp['commissions']
-        income_data.append({
-            'period': label_fn(k),
-            'sales': float(inc['sales']),
-            'deposits': float(inc['deposits']),
-            'transfers_in': float(inc['transfers_in']),
-            'total': float(total_income),
-        })
-        expenses_data.append({
-            'period': label_fn(k),
-            'purchases': float(exp['purchases']),
-            'withdrawals': float(exp['withdrawals']),
-            'transfers_out': float(exp['transfers_out']),
-            'commissions': float(exp['commissions']),
-            'total': float(total_expenses),
-        })
-        net_data.append({
-            'period': label_fn(k),
-            'net': float(total_income - total_expenses),
-        })
-
-    total_income_sum = sum(d['total'] for d in income_data)
-    total_expenses_sum = sum(d['total'] for d in expenses_data)
-
-    return {
-        'income_data': income_data,
-        'expenses_data': expenses_data,
-        'net_data': net_data,
-        'total_income': total_income_sum,
-        'total_expenses': total_expenses_sum,
-        'net_flow': total_income_sum - total_expenses_sum,
-        'period': period,
-    }
+def _json_financial_values(value):
+    """Convert Decimal values only at the existing JSON presentation edge."""
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, list):
+        return [_json_financial_values(item) for item in value]
+    if isinstance(value, dict):
+        return {
+            key: _json_financial_values(item)
+            for key, item in value.items()
+        }
+    return value
 
 
 @login_required
@@ -281,16 +219,9 @@ def portfolio_view(request):
     entries = Portfolio.objects.filter(
         owner=request.user
     ).select_related('creature')
-
-    total_value = sum(e.current_value for e in entries)
-    total_cost = sum(e.cost_basis for e in entries)
-    total_pnl = total_value - total_cost
-    total_pnl_pct = (total_pnl / total_cost * 100) if total_cost > 0 else Decimal('0')
-
-    type_distribution = {}
-    for entry in entries:
-        t = entry.creature.type
-        type_distribution[t] = type_distribution.get(t, Decimal('0')) + entry.current_value
+    portfolio_summary = summarize_portfolio_entries(entries)
+    total_cost = portfolio_summary['total_cost']
+    total_pnl = portfolio_summary['total_pnl']
 
     entry_list = []
     for entry in entries:
@@ -307,44 +238,51 @@ def portfolio_view(request):
         })
 
     sell_trades = Trade.objects.filter(
-        seller=request.user
+        seller=request.user,
+        realized_cost_basis__isnull=False,
     ).select_related('creature')
     realized_pnl = Decimal('0')
-    for t in sell_trades:
-        realized_pnl += t.total_amount - t.commission
+    realized_cost = Decimal('0')
+    for trade in sell_trades:
+        realized_pnl += (
+            trade.total_amount
+            - trade.commission
+            - trade.realized_cost_basis
+        )
+        realized_cost += trade.realized_cost_basis
 
-    portfolio_cost = sum(p.average_cost * p.quantity for p in entries)
-    realized_pnl_total = realized_pnl - portfolio_cost
-
-    total_invested = total_cost
-    total_return = total_pnl + realized_pnl_total
+    total_invested = total_cost + realized_cost
+    total_return = total_pnl + realized_pnl
     total_return_pct = (
         (total_return / total_invested * 100).quantize(Decimal('0.01'))
         if total_invested > 0 else Decimal('0')
     )
 
-    period = request.GET.get('period', 'monthly')
-    if period not in ('monthly', 'yearly'):
-        period = 'monthly'
-    ie_data = _compute_income_expenses(request.user, period)
+    period = normalize_period(request.GET.get('period', 'monthly'))
+    ie_data = compute_income_expenses(request.user, period)
 
     context = {
         'entry_list': entry_list,
         'entries': entries,
-        'total_value': total_value,
-        'total_cost': total_cost,
-        'total_pnl': total_pnl,
-        'total_pnl_pct': total_pnl_pct,
-        'realized_pnl': realized_pnl_total,
-        'realized_pnl_pct': (realized_pnl_total / total_invested * 100).quantize(Decimal('0.01')) if total_invested > 0 else Decimal('0'),
+        'realized_pnl': realized_pnl,
+        'realized_pnl_pct': (
+            (realized_pnl / realized_cost * 100).quantize(Decimal('0.01'))
+            if realized_cost > 0 else Decimal('0')
+        ),
         'total_return': total_return,
         'total_return_pct': total_return_pct,
-        'type_distribution': type_distribution,
         'period': period,
-        'income_data_json': json.dumps(ie_data['income_data']),
-        'expenses_data_json': json.dumps(ie_data['expenses_data']),
-        'net_data_json': json.dumps(ie_data['net_data']),
+        'income_data_json': json.dumps(
+            _json_financial_values(ie_data['income_data'])
+        ),
+        'expenses_data_json': json.dumps(
+            _json_financial_values(ie_data['expenses_data'])
+        ),
+        'net_data_json': json.dumps(
+            _json_financial_values(ie_data['net_data'])
+        ),
     }
+    context.update(portfolio_summary)
     context.update(ie_data)
     return render(request, 'trading/portfolio.html', context)
 
@@ -355,7 +293,9 @@ def order_history_view(request):
     User's order history with status filtering.
     """
     status_filter = request.GET.get('status', '')
-    orders = Order.objects.filter(account=request.user).select_related('creature')
+    orders = Order.objects.filter(
+        account=request.user
+    ).select_related('creature')
 
     if status_filter:
         orders = orders.filter(status=status_filter)
@@ -500,22 +440,20 @@ def portfolio_summary_api(request):
     """JSON API: current portfolio summary for auto-refresh."""
     user = request.user
     entries = Portfolio.objects.filter(owner=user).select_related('creature')
-    total_value = float(sum(e.current_value for e in entries))
-    total_cost = float(sum(e.cost_basis for e in entries))
-    total_pnl = total_value - total_cost
-    total_pnl_pct = round((total_pnl / total_cost * 100) if total_cost > 0 else 0, 2)
-    balance = float(user.balance_dollars)
+    portfolio_summary = summarize_portfolio_entries(entries)
+    total_pnl_pct = portfolio_summary['total_pnl_pct'].quantize(
+        Decimal('0.01')
+    )
+    balance = cents_to_dollars(user.balance_cents)
 
-    period = request.GET.get('period', 'monthly')
-    if period not in ('monthly', 'yearly'):
-        period = 'monthly'
-    ie_data = _compute_income_expenses(user, period)
+    period = normalize_period(request.GET.get('period', 'monthly'))
+    ie_data = compute_income_expenses(user, period)
 
-    return JsonResponse({
+    payload = {
         'balance': balance,
-        'total_value': total_value,
-        'total_cost': total_cost,
-        'total_pnl': total_pnl,
+        'total_value': portfolio_summary['total_value'],
+        'total_cost': portfolio_summary['total_cost'],
+        'total_pnl': portfolio_summary['total_pnl'],
         'total_pnl_pct': total_pnl_pct,
         'income_data': ie_data['income_data'],
         'expenses_data': ie_data['expenses_data'],
@@ -524,4 +462,5 @@ def portfolio_summary_api(request):
         'total_expenses': ie_data['total_expenses'],
         'net_flow': ie_data['net_flow'],
         'period': ie_data['period'],
-    })
+    }
+    return JsonResponse(_json_financial_values(payload))

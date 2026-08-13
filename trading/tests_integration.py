@@ -1,7 +1,8 @@
 from decimal import Decimal
 from datetime import timedelta
+from tempfile import TemporaryDirectory
 
-from django.test import TestCase, Client
+from django.test import TestCase, Client, override_settings
 from django.urls import reverse
 from django.core.exceptions import ValidationError
 
@@ -78,6 +79,41 @@ class TradingIntegrationTests(TestCase):
         portfolio = Portfolio.objects.get(owner=self.user, creature=self.creature)
         self.assertEqual(portfolio.quantity, Decimal('2'))
         self.assertEqual(portfolio.average_cost, Decimal('150.00'))
+
+    def test_market_buy_message_summarizes_all_p2p_and_mm_fills(self):
+        seller = Account.objects.create_user(
+            username='message_seller',
+            email='message-seller@example.com',
+            password='testpass123',
+        )
+        Portfolio.objects.create(
+            owner=seller,
+            creature=self.creature,
+            quantity=Decimal('1'),
+            average_cost=Decimal('50.00'),
+        )
+        TradingEngine.place_limit_order(
+            seller,
+            self.creature,
+            Order.OrderType.SELL,
+            Decimal('1'),
+            Decimal('140.00'),
+        )
+        self._login()
+
+        response = self.client.post(
+            reverse('trading:place_order'),
+            {
+                'creature': self.creature.pk,
+                'order_type': Order.OrderType.BUY,
+                'execution_type': 'MARKET',
+                'quantity': '2',
+            },
+            follow=True,
+        )
+
+        self.assertContains(response, '@ $145.00')
+        self.assertContains(response, 'Commission: $4.35')
 
     def test_market_sell_via_post(self):
         self._login()
@@ -475,6 +511,15 @@ class VolatilityAlertIntegrationTests(TestCase):
 
 class SeedAllIntegrationTests(TestCase):
     """Integration tests for the seed_all management command."""
+
+    def setUp(self):
+        self.media_directory = TemporaryDirectory()
+        self.addCleanup(self.media_directory.cleanup)
+        media_override = override_settings(
+            MEDIA_ROOT=self.media_directory.name,
+        )
+        media_override.enable()
+        self.addCleanup(media_override.disable)
 
     def test_seed_all_creates_data(self):
         from django.core.management import call_command

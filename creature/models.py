@@ -48,6 +48,12 @@ class Creature(models.Model):
         blank=True
     )
     current_price = models.DecimalField(max_digits=12, decimal_places=2, db_index=True)
+    pricing_reference_price = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        editable=False,
+        help_text="Stable reference used by the dynamic pricing engine",
+    )
     previous_close = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     # Base Stats
     hp = models.PositiveIntegerField(default=20)
@@ -126,6 +132,16 @@ class Creature(models.Model):
         if self.secondary_type:
             types += f"/{self.secondary_type}"
         return f"{self.name} ({types})"    
+
+    def save(self, *args, **kwargs):
+        if self.pricing_reference_price is None:
+            self.pricing_reference_price = self.current_price
+            update_fields = kwargs.get('update_fields')
+            if update_fields is not None:
+                kwargs['update_fields'] = set(update_fields) | {
+                    'pricing_reference_price',
+                }
+        super().save(*args, **kwargs)
 
     def get_absolute_url(self):
         from django.urls import reverse
@@ -261,15 +277,29 @@ class BattleManager(models.Manager):
     def start_battle(self, creature_1, creature_2):
         if creature_1 == creature_2:
             raise ValidationError("A creature cannot fight with itself")
-        if not creature_1.is_available_for_battle():
-            raise ValidationError(f"{creature_1.name} is not available to fight.")
-        if not creature_2.is_available_for_battle():
-            raise ValidationError(f"{creature_2.name} is not available to fight.")
+
         with transaction.atomic():
-            creature_1.currently_in_battle = True
-            creature_1.save(update_fields=['currently_in_battle'])
-            creature_2.currently_in_battle = True
-            creature_2.save(update_fields=['currently_in_battle'])
+            creature_ids = [creature_1.pk, creature_2.pk]
+            locked_creatures = list(
+                Creature.objects.select_for_update()
+                .filter(pk__in=creature_ids)
+                .order_by('pk')
+            )
+            creatures_by_id = {
+                creature.pk: creature for creature in locked_creatures
+            }
+            creature_1 = creatures_by_id[creature_1.pk]
+            creature_2 = creatures_by_id[creature_2.pk]
+
+            for creature in (creature_1, creature_2):
+                if not creature.is_available_for_battle():
+                    raise ValidationError(
+                        f"{creature.name} is not available to fight."
+                    )
+
+            Creature.objects.filter(pk__in=creature_ids).update(
+                currently_in_battle=True
+            )
             battle = self.create(status='active', current_turn=1)
             BattleParticipant.objects.create(
                 battle=battle,
@@ -310,23 +340,48 @@ class Battle(models.Model):
         help_text="Pre-computed potential price change % if creature_2 wins"
     )
     next_turn_at = models.DateTimeField(default=timezone.now, help_text="When the next turn will be processed")
+    result_processed_at = models.DateTimeField(null=True, blank=True)
 
     objects = BattleManager()
     
     def record_action(self, actor_participant, target_participant, ability, damage):
         """Registers an action, calculates damage, status, and determinates if the battle has finished"""
-        if self.status != 'active':
-            raise ValidationError("Cannot record an action in an inactive battle")
-
         with transaction.atomic():
+            battle = Battle.objects.select_for_update().get(pk=self.pk)
+            if battle.status != 'active':
+                raise ValidationError(
+                    "Cannot record an action in an inactive battle"
+                )
+
+            participants = {
+                participant.pk: participant
+                for participant in BattleParticipant.objects.select_for_update()
+                .filter(
+                    pk__in=[
+                        actor_participant.pk,
+                        target_participant.pk,
+                    ]
+                )
+                .order_by('pk')
+            }
+            actor_participant = participants[actor_participant.pk]
+            target_participant = participants[target_participant.pk]
+
+            existing_action = BattleAction.objects.filter(
+                battle=battle,
+                turn_number=battle.current_turn,
+            ).first()
+            if existing_action:
+                return existing_action
+
             target_participant.current_hp -= damage
             if target_participant.current_hp <= 0:
                 target_participant.current_hp = 0
             target_participant.save(update_fields=['current_hp'])
             
-            BattleAction.objects.create(
-                battle=self,
-                turn_number=self.current_turn,
+            action = BattleAction.objects.create(
+                battle=battle,
+                turn_number=battle.current_turn,
                 actor=actor_participant,
                 target=target_participant,
                 ability=ability,
@@ -334,15 +389,38 @@ class Battle(models.Model):
             )
             
             if target_participant.current_hp == 0:
-                self.status = 'finished'
-                self.winner = actor_participant 
-                self.save(update_fields=['status', 'winner'])
-        
-                actor_participant.creature.end_battle()
-                target_participant.creature.end_battle()
+                battle.status = 'finished'
+                battle.winner = actor_participant
+                battle.save(update_fields=['status', 'winner'])
+
+                locked_creatures = list(
+                    Creature.objects.select_for_update()
+                    .filter(
+                        pk__in=[
+                            actor_participant.creature_id,
+                            target_participant.creature_id,
+                        ]
+                    )
+                    .order_by('pk')
+                )
+                now = timezone.now()
+                for creature in locked_creatures:
+                    creature.currently_in_battle = False
+                    creature.cooldown_expires_at = (
+                        now + creature.battle_cooldown
+                    )
+                    creature.save(update_fields=[
+                        'currently_in_battle',
+                        'cooldown_expires_at',
+                    ])
             else:
-                self.current_turn += 1
-                self.save(update_fields=['current_turn'])
+                battle.current_turn += 1
+                battle.save(update_fields=['current_turn'])
+
+            self.status = battle.status
+            self.winner = battle.winner
+            self.current_turn = battle.current_turn
+            return action
 
 class BattleParticipant(models.Model):
     battle = models.ForeignKey(Battle, on_delete=models.CASCADE, related_name='participants')
@@ -377,6 +455,12 @@ class BattleAction(models.Model):
 
     class Meta:
         ordering = ['turn_number', 'timestamp']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['battle', 'turn_number'],
+                name='unique_battle_action_per_turn',
+            ),
+        ]
 
 
 
@@ -410,6 +494,12 @@ class EggTemplate(models.Model):
         return f"{self.name} (${self.price})"
 
 
+class DeferredSchedulingStatus(models.TextChoices):
+    PENDING = 'PENDING', 'Pending'
+    SCHEDULED = 'SCHEDULED', 'Scheduled'
+    FAILED = 'FAILED', 'Failed'
+
+
 class Incubation(models.Model):
     """
     Tracks a user's egg purchase and hatching process.
@@ -417,6 +507,9 @@ class Incubation(models.Model):
     class Status(models.TextChoices):
         INCUBATING = 'INCUBATING', 'Incubating'
         HATCHED = 'HATCHED', 'Hatched'
+        FAILED = 'FAILED', 'Failed and refunded'
+
+    SchedulingStatus = DeferredSchedulingStatus
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(
@@ -449,6 +542,18 @@ class Incubation(models.Model):
         null=True, blank=True,
         help_text="Celery task ID for the hatch timer"
     )
+    scheduling_status = models.CharField(
+        max_length=12,
+        choices=SchedulingStatus.choices,
+        default=SchedulingStatus.PENDING,
+    )
+    scheduling_attempts = models.PositiveIntegerField(default=0)
+    scheduling_error = models.TextField(blank=True)
+    last_scheduling_attempt_at = models.DateTimeField(null=True, blank=True)
+    completion_notified_at = models.DateTimeField(null=True, blank=True)
+    failed_at = models.DateTimeField(null=True, blank=True)
+    failure_reason = models.TextField(blank=True)
+    refunded_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ['-purchased_at']
@@ -458,10 +563,70 @@ class Incubation(models.Model):
 
     @property
     def time_remaining(self):
-        if self.status == self.Status.HATCHED:
+        if self.status != self.Status.INCUBATING:
             return 0
         remaining = self.hatches_at - timezone.now()
         return max(remaining.total_seconds(), 0)
+
+
+class TrainingSession(models.Model):
+    class Status(models.TextChoices):
+        PENDING = 'PENDING', 'Pending'
+        COMPLETED = 'COMPLETED', 'Completed'
+
+    SchedulingStatus = DeferredSchedulingStatus
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        Account,
+        on_delete=models.CASCADE,
+        related_name='training_sessions',
+    )
+    creature = models.ForeignKey(
+        Creature,
+        on_delete=models.PROTECT,
+        related_name='training_sessions',
+    )
+    portfolio = models.ForeignKey(
+        'trading.Portfolio',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='training_sessions',
+    )
+    cost_cents = models.BigIntegerField()
+    execute_at = models.DateTimeField()
+    status = models.CharField(
+        max_length=12,
+        choices=Status.choices,
+        default=Status.PENDING,
+    )
+    celery_task_id = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        unique=True,
+    )
+    scheduling_status = models.CharField(
+        max_length=12,
+        choices=SchedulingStatus.choices,
+        default=SchedulingStatus.PENDING,
+    )
+    scheduling_attempts = models.PositiveIntegerField(default=0)
+    scheduling_error = models.TextField(blank=True)
+    last_scheduling_attempt_at = models.DateTimeField(null=True, blank=True)
+    result_stat = models.CharField(max_length=32, blank=True)
+    result_boost = models.PositiveIntegerField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    completion_notified_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['status', 'execute_at']),
+        ]
 
 
 class BattleInvestment(models.Model):

@@ -1,14 +1,57 @@
 import random
 from decimal import Decimal
+from math import ceil
 
-from django.db import transaction
-from django.core.exceptions import ValidationError
-from django.utils import timezone
-from django.db.models import Count, Q, Sum as models_Sum, F
 from django.conf import settings
+from django.core.exceptions import ValidationError
+from django.db import transaction
+from django.db.models import Count, F, Q, Sum as models_Sum
+from django.utils import timezone
 
+from account.money import dollars_to_cents, quantize_money
 from account.models import Account
-from .models import Creature, EggTemplate, Incubation, Ability, Battle, BattleParticipant, BattleAction, BattleInvestment
+from .models import (
+    Battle,
+    BattleAction,
+    BattleInvestment,
+    BattleParticipant,
+    Creature,
+    Incubation,
+    TrainingSession,
+)
+
+
+def _countdown_until(deadline, now):
+    return max(0, ceil((deadline - now).total_seconds()))
+
+
+def _recoverable_scheduling_q(deadline_field, status_choices, now):
+    stale_before = now - timezone.timedelta(
+        seconds=getattr(
+            settings,
+            'CREATURE_RECOVERY_GRACE_SECONDS',
+            300,
+        )
+    )
+    stale_scheduled = (
+        Q(scheduling_status=status_choices.SCHEDULED)
+        & Q(**{f'{deadline_field}__lte': now})
+        & (
+            Q(last_scheduling_attempt_at__isnull=True)
+            | Q(last_scheduling_attempt_at__lte=stale_before)
+        )
+    )
+    return (
+        Q(scheduling_status__in=[
+            status_choices.PENDING,
+            status_choices.FAILED,
+        ])
+        | stale_scheduled
+    )
+
+
+class HatchConfigurationError(ValidationError):
+    """A permanent hatch error that requires refunding the purchase."""
 
 
 class IncubationService:
@@ -22,14 +65,16 @@ class IncubationService:
         Purchase an egg: deduct balance, create incubation record,
         schedule Celery task for hatching.
         """
-        from .tasks import hatch_egg
-
         price = egg_template.price
+        if not egg_template.creature_pool.exists():
+            raise HatchConfigurationError(
+                f"No creatures in pool for {egg_template.name}"
+            )
 
         with transaction.atomic():
             locked_user = Account.objects.select_for_update().get(pk=user.pk)
 
-            cost_cents = int(price * 100)
+            cost_cents = dollars_to_cents(price)
             if locked_user.balance_cents < cost_cents:
                 raise ValidationError(
                     f"Insufficient funds. Egg costs ${price}, "
@@ -45,16 +90,73 @@ class IncubationService:
                 egg_template=egg_template,
                 hatches_at=hatches_at,
             )
-
-        task = hatch_egg.apply_async(
-            args=[str(incubation.pk)],
-            eta=hatches_at,
-        )
-
-        incubation.celery_task_id = task.id
-        incubation.save(update_fields=['celery_task_id'])
+            transaction.on_commit(
+                lambda: cls.schedule_hatch(incubation.pk)
+            )
 
         return incubation
+
+    @classmethod
+    def schedule_hatch(cls, incubation_id):
+        from .tasks import hatch_egg
+
+        now = timezone.now()
+        with transaction.atomic():
+            incubation = Incubation.objects.select_for_update().get(
+                pk=incubation_id
+            )
+            if incubation.status != Incubation.Status.INCUBATING:
+                return False
+            incubation.scheduling_attempts += 1
+            incubation.last_scheduling_attempt_at = now
+            incubation.save(update_fields=[
+                'scheduling_attempts',
+                'last_scheduling_attempt_at',
+            ])
+
+        countdown = _countdown_until(incubation.hatches_at, now)
+        try:
+            task = hatch_egg.apply_async(
+                args=[str(incubation.pk)],
+                countdown=countdown,
+            )
+        except Exception as exc:
+            Incubation.objects.filter(
+                pk=incubation.pk,
+                status=Incubation.Status.INCUBATING,
+            ).update(
+                scheduling_status=Incubation.SchedulingStatus.FAILED,
+                scheduling_error=str(exc),
+            )
+            return False
+
+        Incubation.objects.filter(
+            pk=incubation.pk,
+            status=Incubation.Status.INCUBATING,
+        ).update(
+            celery_task_id=task.id,
+            scheduling_status=Incubation.SchedulingStatus.SCHEDULED,
+            scheduling_error='',
+        )
+        return True
+
+    @classmethod
+    def recover_scheduling(cls):
+        now = timezone.now()
+        incubation_ids = Incubation.objects.filter(
+            status=Incubation.Status.INCUBATING,
+        ).filter(
+            _recoverable_scheduling_q(
+                'hatches_at',
+                Incubation.SchedulingStatus,
+                now,
+            )
+        ).values_list('pk', flat=True)
+
+        return sum(
+            bool(cls.schedule_hatch(incubation_id))
+            for incubation_id in incubation_ids
+        )
 
     @classmethod
     def hatch_egg(cls, incubation):
@@ -62,37 +164,119 @@ class IncubationService:
         Execute hatching: select a random creature from the egg's pool,
         randomize its starter price, and credit it to the user's portfolio.
         """
-        if incubation.status != Incubation.Status.INCUBATING:
-            return incubation
-
-        if timezone.now() < incubation.hatches_at:
-            return incubation
-
-        egg_template = incubation.egg_template
-        creature_pool = list(egg_template.creature_pool.all())
-        if not creature_pool:
-            raise ValidationError(f"No creatures in pool for {egg_template.name}")
-
-        creature = random.choice(creature_pool)
-
+        incubation_id = getattr(incubation, 'pk', incubation)
         from trading.models import Portfolio
+        from trading.models import Notification
 
         with transaction.atomic():
+            incubation = (
+                Incubation.objects.select_for_update()
+                .select_related('egg_template', 'user')
+                .get(pk=incubation_id)
+            )
+            if incubation.status != Incubation.Status.INCUBATING:
+                return incubation
+            if timezone.now() < incubation.hatches_at:
+                raise ValidationError(
+                    f"Incubation {incubation.pk} is not ready to hatch."
+                )
+
+            creature_pool = list(
+                incubation.egg_template.creature_pool.all()
+            )
+            if not creature_pool:
+                raise HatchConfigurationError(
+                    f"No creatures in pool for "
+                    f"{incubation.egg_template.name}"
+                )
+            creature = random.choice(creature_pool)
+            creature = Creature.objects.select_for_update().get(
+                pk=creature.pk
+            )
+
+            Account.objects.select_for_update().get(pk=incubation.user_id)
+            portfolio = (
+                Portfolio.objects.select_for_update()
+                .filter(
+                    owner_id=incubation.user_id,
+                    creature=creature,
+                )
+                .first()
+            )
+            if portfolio:
+                portfolio.quantity += Decimal('1')
+                portfolio.save(update_fields=['quantity', 'updated_at'])
+            else:
+                Portfolio.objects.create(
+                    owner_id=incubation.user_id,
+                    creature=creature,
+                    quantity=Decimal('1'),
+                    average_cost=creature.current_price,
+                )
+
+            completed_at = timezone.now()
             incubation.status = Incubation.Status.HATCHED
-            incubation.hatched_at = timezone.now()
+            incubation.hatched_at = completed_at
             incubation.hatched_creature = creature
+            incubation.completion_notified_at = completed_at
             incubation.save(update_fields=[
-                'status', 'hatched_at', 'hatched_creature'
+                'status',
+                'hatched_at',
+                'hatched_creature',
+                'completion_notified_at',
             ])
 
-            Portfolio.objects.create(
-                owner=incubation.user,
-                creature=creature,
-                quantity=Decimal('1'),
-                average_cost=creature.current_price,
+            Notification.objects.create(
+                user_id=incubation.user_id,
+                notification_type=Notification.Type.INCUBATION_COMPLETE,
+                title=f"{creature.name} hatched!",
+                message=(
+                    f"Your {incubation.egg_template.name} hatched into "
+                    f"{creature.name}."
+                ),
+                related_creature=creature,
             )
 
         return incubation
+
+    @classmethod
+    def fail_hatch(cls, incubation_id, reason):
+        """Mark a permanent hatch failure and refund exactly once."""
+        with transaction.atomic():
+            incubation = (
+                Incubation.objects.select_for_update()
+                .select_related('egg_template')
+                .get(pk=incubation_id)
+            )
+            if incubation.status != Incubation.Status.INCUBATING:
+                return incubation, False
+
+            account = Account.objects.select_for_update().get(
+                pk=incubation.user_id
+            )
+            account.balance_cents += dollars_to_cents(
+                incubation.egg_template.price
+            )
+            account.save(update_fields=['balance_cents'])
+
+            failed_at = timezone.now()
+            incubation.status = Incubation.Status.FAILED
+            incubation.failed_at = failed_at
+            incubation.failure_reason = str(reason)
+            incubation.refunded_at = failed_at
+            incubation.scheduling_status = (
+                Incubation.SchedulingStatus.FAILED
+            )
+            incubation.scheduling_error = str(reason)
+            incubation.save(update_fields=[
+                'status',
+                'failed_at',
+                'failure_reason',
+                'refunded_at',
+                'scheduling_status',
+                'scheduling_error',
+            ])
+            return incubation, True
 
 
 class BattleService:
@@ -135,6 +319,38 @@ class BattleService:
         Start a battle between two creatures with ELO snapshot and
         potential value change pre-computation.
         """
+        with transaction.atomic():
+            creatures = list(
+                Creature.objects.select_for_update()
+                .filter(pk__in=[creature_1.pk, creature_2.pk])
+                .order_by('pk')
+            )
+            creatures_by_id = {
+                creature.pk: creature for creature in creatures
+            }
+            return cls._start_locked_battle(
+                creatures_by_id[creature_1.pk],
+                creatures_by_id[creature_2.pk],
+            )
+
+    @classmethod
+    def matchmake_random_battle(cls):
+        now = timezone.now()
+        with transaction.atomic():
+            creatures = list(
+                Creature.objects.select_for_update(skip_locked=True)
+                .filter(
+                    currently_in_battle=False,
+                    cooldown_expires_at__lte=now,
+                )
+                .order_by('?')[:2]
+            )
+            if len(creatures) != 2:
+                return None
+            return cls._start_locked_battle(*creatures)
+
+    @classmethod
+    def _start_locked_battle(cls, creature_1, creature_2):
         win_1, lose_1 = cls.calculate_potential_change(
             creature_1.elo_rating, creature_2.elo_rating
         )
@@ -142,33 +358,186 @@ class BattleService:
             creature_2.elo_rating, creature_1.elo_rating
         )
 
-        from django.utils import timezone
         turn_interval = getattr(settings, 'BATTLE_TURN_INTERVAL', 180)
 
-        with transaction.atomic():
-            battle = Battle.objects.start_battle(creature_1, creature_2)
+        battle = Battle.objects.start_battle(creature_1, creature_2)
 
-            creature_1_elo = creature_1.elo_rating
-            creature_2_elo = creature_2.elo_rating
+        battle.creature_1_elo_before = creature_1.elo_rating
+        battle.creature_2_elo_before = creature_2.elo_rating
+        battle.creature_1_potential_change = win_1
+        battle.creature_2_potential_change = win_2
+        battle.next_turn_at = (
+            timezone.now() + timezone.timedelta(seconds=turn_interval)
+        )
+        battle.save(update_fields=[
+            'creature_1_elo_before',
+            'creature_2_elo_before',
+            'creature_1_potential_change',
+            'creature_2_potential_change',
+            'next_turn_at',
+        ])
 
-            battle.creature_1_elo_before = creature_1_elo
-            battle.creature_2_elo_before = creature_2_elo
-            battle.creature_1_potential_change = win_1  # win_pct for creature_1
-            battle.creature_2_potential_change = win_2  # win_pct for creature_2
-            battle.next_turn_at = timezone.now() + timezone.timedelta(seconds=turn_interval)
-            battle.save(update_fields=[
-                'creature_1_elo_before', 'creature_2_elo_before',
-                'creature_1_potential_change', 'creature_2_potential_change',
-                'next_turn_at',
-            ])
-
-            # Snapshot pre-battle prices on participants (3NF: event snapshot)
-            participants = list(battle.participants.all())
-            for p in participants:
-                p.price_before = p.creature.current_price
-                p.save(update_fields=['price_before'])
+        participants = list(
+            battle.participants.select_related('creature').all()
+        )
+        for participant in participants:
+            participant.price_before = participant.creature.current_price
+            participant.save(update_fields=['price_before'])
 
         return battle
+
+    @classmethod
+    def process_turn(cls, battle_id, expected_turn=None):
+        should_process_result = False
+        with transaction.atomic():
+            battle = Battle.objects.select_for_update().get(pk=battle_id)
+            if battle.status != 'active':
+                return {
+                    'status': battle.status,
+                    'battle': battle,
+                    'processed': False,
+                }
+            if (
+                expected_turn is not None
+                and battle.current_turn != expected_turn
+            ):
+                return {
+                    'status': battle.status,
+                    'battle': battle,
+                    'processed': False,
+                }
+
+            turn_number = battle.current_turn
+            if BattleAction.objects.filter(
+                battle=battle,
+                turn_number=turn_number,
+            ).exists():
+                return {
+                    'status': battle.status,
+                    'battle': battle,
+                    'processed': False,
+                }
+
+            participants = list(
+                BattleParticipant.objects.select_for_update()
+                .filter(battle=battle)
+                .select_related('creature')
+                .prefetch_related('creature__abilities')
+                .order_by('id')
+            )
+            if len(participants) != 2:
+                raise ValidationError(
+                    f"Battle {battle.pk} must have two participants."
+                )
+
+            previous_turn = turn_number - 1
+            if previous_turn >= 1:
+                cls.record_turn_investments(battle, previous_turn)
+
+            if turn_number % 2:
+                attacker, defender = participants
+            else:
+                defender, attacker = participants
+
+            abilities = list(attacker.creature.abilities.all())
+            if not abilities:
+                cls._finish_battle_without_winner(battle, participants)
+                should_process_result = True
+            else:
+                ability = random.choice(abilities)
+                power = ability.power or 10
+                if ability.damage_class == 'special':
+                    attack_stat = attacker.creature.special_attack
+                    defense_stat = defender.creature.special_defense
+                else:
+                    attack_stat = attacker.creature.attack
+                    defense_stat = defender.creature.defense
+                raw_damage = (
+                    power * attack_stat / max(defense_stat, 1)
+                ) / 2.5
+                random_factor = random.randint(85, 100) / 100.0
+                damage = max(1, int(raw_damage * random_factor))
+
+                battle.record_action(
+                    actor_participant=attacker,
+                    target_participant=defender,
+                    ability=ability,
+                    damage=damage,
+                )
+                battle.refresh_from_db()
+                if battle.status == 'active':
+                    turn_interval = getattr(
+                        settings,
+                        'BATTLE_TURN_INTERVAL',
+                        180,
+                    )
+                    battle.next_turn_at = (
+                        timezone.now()
+                        + timezone.timedelta(seconds=turn_interval)
+                    )
+                    battle.save(update_fields=['next_turn_at'])
+                else:
+                    cls.record_turn_investments(battle, turn_number)
+                    should_process_result = True
+
+        if should_process_result:
+            battle = cls.process_battle_result(battle_id)
+
+        return {
+            'status': battle.status,
+            'battle': battle,
+            'processed': True,
+            'turn_number': turn_number,
+        }
+
+    @staticmethod
+    def _finish_battle_without_winner(battle, participants):
+        creature_ids = [
+            participant.creature_id for participant in participants
+        ]
+        creatures = list(
+            Creature.objects.select_for_update()
+            .filter(pk__in=creature_ids)
+            .order_by('pk')
+        )
+        now = timezone.now()
+        for creature in creatures:
+            creature.currently_in_battle = False
+            creature.cooldown_expires_at = now + creature.battle_cooldown
+            creature.save(update_fields=[
+                'currently_in_battle',
+                'cooldown_expires_at',
+            ])
+        battle.status = 'finished'
+        battle.winner = None
+        battle.save(update_fields=['status', 'winner'])
+
+    @classmethod
+    def recover_battles(cls, schedule_turn=None):
+        """Recover overdue battles with an optional async scheduling edge."""
+        now = timezone.now()
+        active_battles = list(
+            Battle.objects.filter(
+                status='active',
+                next_turn_at__lte=now,
+            ).values_list('pk', 'current_turn')
+        )
+        for battle_id, current_turn in active_battles:
+            if schedule_turn is None:
+                cls.process_turn(battle_id, current_turn)
+            else:
+                schedule_turn(battle_id, current_turn)
+
+        finished_ids = list(
+            Battle.objects.filter(
+                status='finished',
+                result_processed_at__isnull=True,
+            ).values_list('pk', flat=True)
+        )
+        for battle_id in finished_ids:
+            cls.process_battle_result(battle_id)
+
+        return len(active_battles) + len(finished_ids)
 
     @classmethod
     def process_battle_result(cls, battle):
@@ -180,19 +549,41 @@ class BattleService:
         - Store post-battle ELO on the battle record
         - Create notifications for holders of both creatures
         """
-        if battle.status != 'finished':
-            return
-
-        participants = list(battle.participants.select_related('creature').all())
-        if len(participants) != 2:
-            return
-
-        p1, p2 = participants
-        winner = battle.winner
-
+        battle_id = getattr(battle, 'pk', battle)
         with transaction.atomic():
-            c1 = Creature.objects.select_for_update().get(pk=p1.creature_id)
-            c2 = Creature.objects.select_for_update().get(pk=p2.creature_id)
+            battle = (
+                Battle.objects.select_for_update()
+                .get(pk=battle_id)
+            )
+            if (
+                battle.status != 'finished'
+                or battle.result_processed_at is not None
+            ):
+                return battle
+
+            participants = list(
+                BattleParticipant.objects.select_for_update()
+                .filter(battle=battle)
+                .select_related('creature')
+                .order_by('id')
+            )
+            if len(participants) != 2:
+                raise ValidationError(
+                    f"Battle {battle.pk} must have two participants."
+                )
+
+            p1, p2 = participants
+            locked_creatures = list(
+                Creature.objects.select_for_update()
+                .filter(pk__in=[p1.creature_id, p2.creature_id])
+                .order_by('pk')
+            )
+            creatures_by_id = {
+                creature.pk: creature for creature in locked_creatures
+            }
+            c1 = creatures_by_id[p1.creature_id]
+            c2 = creatures_by_id[p2.creature_id]
+            winner = battle.winner
 
             if winner and winner.pk == p1.pk:
                 score_1, score_2 = 1, 0
@@ -223,21 +614,25 @@ class BattleService:
 
             battle.creature_1_elo_after = c1.elo_rating
             battle.creature_2_elo_after = c2.elo_rating
-            battle.save(update_fields=['creature_1_elo_after', 'creature_2_elo_after'])
+            battle.save(update_fields=[
+                'creature_1_elo_after',
+                'creature_2_elo_after',
+            ])
 
-        from trading.services import PricingEngine
-        PricingEngine.update_creature_price(c1)
-        PricingEngine.update_creature_price(c2)
+            from trading.services import PricingEngine
+            PricingEngine.update_creature_price(c1)
+            PricingEngine.update_creature_price(c2)
 
-        # Snapshot post-battle prices on participants (3NF: event snapshot)
-        c1.refresh_from_db(fields=['current_price'])
-        c2.refresh_from_db(fields=['current_price'])
-        p1.price_after = c1.current_price
-        p2.price_after = c2.current_price
-        p1.save(update_fields=['price_after'])
-        p2.save(update_fields=['price_after'])
+            p1.price_after = c1.current_price
+            p2.price_after = c2.current_price
+            p1.save(update_fields=['price_after'])
+            p2.save(update_fields=['price_after'])
 
-        cls._create_battle_notifications(battle, participants)
+            cls._create_battle_notifications(battle, participants)
+            battle.result_processed_at = timezone.now()
+            battle.save(update_fields=['result_processed_at'])
+
+        return battle
 
     @staticmethod
     def _create_battle_notifications(battle, participants):
@@ -275,18 +670,20 @@ class BattleService:
     @staticmethod
     def record_turn_investments(battle, turn_number):
         """
-        Count Portfolio entries created for each creature since the last
-        BattleAction or battle creation time. Stores results as BattleInvestment.
+        Count unique Trade buyers and bought volume during the turn window.
         """
-        from trading.models import Portfolio
+        from trading.models import Trade
 
-        participants = list(battle.participants.select_related('creature').all())
+        participants = list(
+            battle.participants.select_related('creature').all()
+        )
         if len(participants) != 2:
             return
 
-        # Reference time: the previous action's timestamp, or battle creation
+        # Reference time: the previous turn's action, or battle creation.
         prev_action = BattleAction.objects.filter(
-            battle=battle, turn_number=turn_number
+            battle=battle,
+            turn_number=turn_number - 1,
         ).order_by('timestamp').last()
 
         if prev_action:
@@ -294,26 +691,27 @@ class BattleService:
         else:
             since = battle.created_at
 
+        until = timezone.now()
         for p in participants:
-            new_investors = Portfolio.objects.filter(
+            investment = Trade.objects.filter(
                 creature=p.creature,
-                acquired_at__gte=since,
-                acquired_at__lte=timezone.now(),
-            ).count()
-
-            total_qty = Portfolio.objects.filter(
-                creature=p.creature,
-                acquired_at__gte=since,
-                acquired_at__lte=timezone.now(),
-            ).aggregate(total=models_Sum('quantity'))['total'] or Decimal('0')
+                buyer__isnull=False,
+                executed_at__gte=since,
+                executed_at__lte=until,
+            ).aggregate(
+                investor_count=Count('buyer_id', distinct=True),
+                total_amount=models_Sum('quantity'),
+            )
 
             BattleInvestment.objects.update_or_create(
                 battle=battle,
                 turn_number=turn_number,
                 creature=p.creature,
                 defaults={
-                    'investor_count': new_investors,
-                    'total_amount': total_qty,
+                    'investor_count': investment['investor_count'],
+                    'total_amount': (
+                        investment['total_amount'] or Decimal('0')
+                    ),
                 }
             )
 
@@ -495,7 +893,9 @@ class TrainingService:
 
     @classmethod
     def get_training_cost(cls, creature):
-        return (creature.current_price * cls.TRAINING_COST_MULTIPLIER).quantize(Decimal('0.01'))
+        return quantize_money(
+            creature.current_price * cls.TRAINING_COST_MULTIPLIER
+        )
 
     @classmethod
     def get_possible_stat_boosts(cls, creature):
@@ -506,28 +906,192 @@ class TrainingService:
         """
         Pay training fee, boost stats asynchronously.
         """
-        from .tasks import complete_training
-
-        cost = cls.get_training_cost(creature)
-
         with transaction.atomic():
+            locked_creature = Creature.objects.select_for_update().get(
+                pk=creature.pk
+            )
             locked_user = Account.objects.select_for_update().get(pk=user.pk)
-            cost_cents = int(cost * 100)
+            from trading.models import Portfolio
+            locked_portfolio = Portfolio.objects.select_for_update().get(
+                pk=portfolio_entry.pk,
+                owner=locked_user,
+                creature=locked_creature,
+            )
+            cost = cls.get_training_cost(locked_creature)
+            cost_cents = dollars_to_cents(cost)
             if locked_user.balance_cents < cost_cents:
                 raise ValidationError(
                     f"Insufficient funds. Training costs ${cost}, "
                     f"have ${locked_user.balance_dollars}."
                 )
 
-            from trading.models import Portfolio
-            locked_portfolio = Portfolio.objects.select_for_update().get(
-                pk=portfolio_entry.pk
-            )
             locked_user.balance_cents -= cost_cents
             locked_user.save(update_fields=['balance_cents'])
+            execute_at = timezone.now() + timezone.timedelta(seconds=30)
+            session = TrainingSession.objects.create(
+                user=locked_user,
+                creature=locked_creature,
+                portfolio=locked_portfolio,
+                cost_cents=cost_cents,
+                execute_at=execute_at,
+            )
+            transaction.on_commit(
+                lambda: cls.schedule_training(session.pk)
+            )
+        return session
 
-        task = complete_training.apply_async(
-            args=[str(creature.pk), str(locked_portfolio.pk)],
-            countdown=30,
+    @classmethod
+    def schedule_training(cls, session_id):
+        from .tasks import complete_training
+
+        now = timezone.now()
+        with transaction.atomic():
+            session = TrainingSession.objects.select_for_update().get(
+                pk=session_id
+            )
+            if session.status != TrainingSession.Status.PENDING:
+                return False
+            session.scheduling_attempts += 1
+            session.last_scheduling_attempt_at = now
+            session.save(update_fields=[
+                'scheduling_attempts',
+                'last_scheduling_attempt_at',
+            ])
+
+        countdown = _countdown_until(session.execute_at, now)
+        try:
+            task = complete_training.apply_async(
+                args=[str(session.pk)],
+                countdown=countdown,
+            )
+        except Exception as exc:
+            TrainingSession.objects.filter(
+                pk=session.pk,
+                status=TrainingSession.Status.PENDING,
+            ).update(
+                scheduling_status=(
+                    TrainingSession.SchedulingStatus.FAILED
+                ),
+                scheduling_error=str(exc),
+            )
+            return False
+
+        TrainingSession.objects.filter(
+            pk=session.pk,
+            status=TrainingSession.Status.PENDING,
+        ).update(
+            celery_task_id=task.id,
+            scheduling_status=TrainingSession.SchedulingStatus.SCHEDULED,
+            scheduling_error='',
         )
-        return task.id
+        return True
+
+    @classmethod
+    def recover_scheduling(cls):
+        now = timezone.now()
+        session_ids = TrainingSession.objects.filter(
+            status=TrainingSession.Status.PENDING,
+        ).filter(
+            _recoverable_scheduling_q(
+                'execute_at',
+                TrainingSession.SchedulingStatus,
+                now,
+            )
+        ).values_list('pk', flat=True)
+        return sum(
+            bool(cls.schedule_training(session_id))
+            for session_id in session_ids
+        )
+
+    @classmethod
+    def complete_legacy_training(
+        cls,
+        creature_id,
+        portfolio_id,
+        task_id,
+    ):
+        """Adapt an in-flight pre-TrainingSession Celery message."""
+        from trading.models import Portfolio
+
+        with transaction.atomic():
+            portfolio = (
+                Portfolio.objects.select_for_update()
+                .select_related('owner', 'creature')
+                .get(pk=portfolio_id, creature_id=creature_id)
+            )
+            session = TrainingSession.objects.filter(
+                celery_task_id=task_id
+            ).first()
+            if session is None:
+                session = TrainingSession.objects.create(
+                    user=portfolio.owner,
+                    creature=portfolio.creature,
+                    portfolio=portfolio,
+                    cost_cents=0,
+                    execute_at=timezone.now(),
+                    celery_task_id=task_id,
+                    scheduling_status=(
+                        TrainingSession.SchedulingStatus.SCHEDULED
+                    ),
+                )
+        return cls.complete_training(session)
+
+    @classmethod
+    def complete_training(cls, session):
+        session_id = getattr(session, 'pk', session)
+        from trading.models import Notification
+        from trading.services import PricingEngine
+
+        with transaction.atomic():
+            session = (
+                TrainingSession.objects.select_for_update()
+                .select_related('creature', 'user')
+                .get(pk=session_id)
+            )
+            if session.status == TrainingSession.Status.COMPLETED:
+                return session
+            if timezone.now() < session.execute_at:
+                raise ValidationError(
+                    f"Training session {session.pk} is not ready."
+                )
+
+            creature = Creature.objects.select_for_update().get(
+                pk=session.creature_id
+            )
+            boost = cls.get_possible_stat_boosts(creature)
+            stat = random.choice([
+                'hp',
+                'attack',
+                'defense',
+                'special_attack',
+                'special_defense',
+                'speed',
+            ])
+            setattr(creature, stat, getattr(creature, stat) + boost)
+            creature.save(update_fields=[stat])
+            PricingEngine.update_creature_price(creature)
+
+            completed_at = timezone.now()
+            Notification.objects.create(
+                user_id=session.user_id,
+                notification_type=Notification.Type.TRAINING_COMPLETE,
+                title=f"{creature.name} completed training!",
+                message=(
+                    f"{creature.name} gained {boost} {stat.replace('_', ' ')}."
+                ),
+                related_creature=creature,
+            )
+            session.status = TrainingSession.Status.COMPLETED
+            session.result_stat = stat
+            session.result_boost = boost
+            session.completed_at = completed_at
+            session.completion_notified_at = completed_at
+            session.save(update_fields=[
+                'status',
+                'result_stat',
+                'result_boost',
+                'completed_at',
+                'completion_notified_at',
+                'updated_at',
+            ])
+        return session

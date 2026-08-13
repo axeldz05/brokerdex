@@ -1,10 +1,9 @@
 import uuid
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
-from django.db import models, transaction
-from django.utils import timezone
+from django.db import models
 
 from account.models import Account
 from creature.models import Creature
@@ -107,7 +106,10 @@ class Order(models.Model):
         related_name='orders'
     )
     order_type = models.CharField(max_length=4, choices=OrderType.choices)
-    execution_type = models.CharField(max_length=6, choices=ExecutionType.choices)
+    execution_type = models.CharField(
+        max_length=6,
+        choices=ExecutionType.choices,
+    )
     quantity = models.DecimalField(
         max_digits=18,
         decimal_places=8,
@@ -125,6 +127,16 @@ class Order(models.Model):
         decimal_places=8,
         default=Decimal('0')
     )
+    reserved_cents = models.BigIntegerField(
+        default=0,
+        help_text="Remaining cash reserved by an active BUY limit order",
+    )
+    reserved_quantity = models.DecimalField(
+        max_digits=18,
+        decimal_places=8,
+        default=Decimal('0'),
+        help_text="Remaining units reserved by an active SELL limit order",
+    )
     status = models.CharField(
         max_length=20,
         choices=Status.choices,
@@ -139,11 +151,34 @@ class Order(models.Model):
             models.Index(fields=['creature', 'status', 'order_type']),
             models.Index(fields=['account', 'status']),
         ]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(reserved_cents__gte=0),
+                name='order_reserved_cents_nonnegative',
+            ),
+            models.CheckConstraint(
+                condition=models.Q(reserved_quantity__gte=0),
+                name='order_reserved_quantity_nonnegative',
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(filled_quantity__gte=0)
+                    & models.Q(filled_quantity__lte=models.F('quantity'))
+                ),
+                name='order_filled_quantity_valid',
+            ),
+        ]
 
     def clean(self):
-        if self.execution_type == self.ExecutionType.LIMIT and self.limit_price is None:
+        if (
+            self.execution_type == self.ExecutionType.LIMIT
+            and self.limit_price is None
+        ):
             raise ValidationError("Limit orders require a limit_price.")
-        if self.execution_type == self.ExecutionType.MARKET and self.limit_price is not None:
+        if (
+            self.execution_type == self.ExecutionType.MARKET
+            and self.limit_price is not None
+        ):
             raise ValidationError("Market orders must not have a limit_price.")
 
     @property
@@ -155,9 +190,37 @@ class Order(models.Model):
     def is_fully_filled(self):
         return self.filled_quantity >= self.quantity
 
+    def execution_summary(self):
+        """Summarize every historical fill linked to this order."""
+        trades = (
+            self.trades_as_buy.all()
+            if self.order_type == self.OrderType.BUY
+            else self.trades_as_sell.all()
+        )
+        total_quantity = Decimal('0')
+        total_notional = Decimal('0')
+        total_commission = Decimal('0')
+        for trade in trades:
+            total_quantity += trade.quantity
+            total_notional += trade.total_amount
+            total_commission += trade.commission
+
+        average_price = Decimal('0')
+        if total_quantity:
+            average_price = (total_notional / total_quantity).quantize(
+                Decimal('0.01'),
+                rounding=ROUND_HALF_UP,
+            )
+        return {
+            'quantity': total_quantity,
+            'average_price': average_price,
+            'commission': total_commission,
+        }
+
     def __str__(self):
         return (
-            f"{self.get_order_type_display()} {self.get_execution_type_display()} "
+            f"{self.get_order_type_display()} "
+            f"{self.get_execution_type_display()} "
             f"— {self.creature.name} ×{self.quantity} [{self.status}]"
         )
 
@@ -187,7 +250,9 @@ class Trade(models.Model):
         null=True,
         blank=True,
         related_name='trades_as_seller',
-        help_text="NULL when the Market Maker (liquidity pool) is the counterparty"
+        help_text=(
+            "NULL when the Market Maker (liquidity pool) is the counterparty"
+        ),
     )
     creature = models.ForeignKey(
         Creature,
@@ -213,6 +278,16 @@ class Trade(models.Model):
         max_digits=12,
         decimal_places=2,
         help_text="Actual commission charged at execution time"
+    )
+    realized_cost_basis = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text=(
+            "Cost basis consumed by a SELL execution; NULL for historical "
+            "trades without a snapshot"
+        ),
     )
     executed_at = models.DateTimeField(auto_now_add=True)
 
@@ -290,9 +365,16 @@ class MarketIndex(models.Model):
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    creature_type = models.CharField(max_length=15, choices=Creature._meta.get_field('type').choices)
+    creature_type = models.CharField(
+        max_length=15,
+        choices=Creature._meta.get_field('type').choices,
+    )
     value = models.DecimalField(max_digits=12, decimal_places=2)
-    previous_value = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0'))
+    previous_value = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0'),
+    )
     total_volume = models.DecimalField(
         max_digits=18, decimal_places=8, default=Decimal('0'),
         help_text="Total trading volume across all creatures in this index",
@@ -317,7 +399,11 @@ class MarketIndex(models.Model):
     def change_pct(self):
         if self.previous_value == 0:
             return Decimal('0')
-        return ((self.value - self.previous_value) / self.previous_value * 100).quantize(Decimal('0.01'))
+        return (
+            (self.value - self.previous_value)
+            / self.previous_value
+            * 100
+        ).quantize(Decimal('0.01'))
 
 
 class Notification(models.Model):
@@ -353,4 +439,7 @@ class Notification(models.Model):
         ]
 
     def __str__(self):
-        return f"[{self.notification_type}] {self.title} — {self.user.username}"
+        return (
+            f"[{self.notification_type}] {self.title} "
+            f"— {self.user.username}"
+        )

@@ -1,3 +1,4 @@
 **/__pycache__/
 reset_migration.sh
 celerybeat*
+/media/creatures/*

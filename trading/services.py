@@ -1,18 +1,32 @@
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
-from django.db import transaction
 from django.core.exceptions import ValidationError
+from django.db import transaction
+from django.db.models import Max, Min, Sum
 from django.utils import timezone
-from django.db.models import Sum, Q, Count, Avg, Max, Min
 
-from .models import Order, Trade, Portfolio, PriceHistory, MarketIndex, Notification
+from account.money import (
+    MONEY_QUANTUM as MONEY_CENT,
+    dollars_to_cents,
+    quantize_money,
+)
 from creature.models import Creature, Battle
+
+from .models import (
+    MarketIndex,
+    Notification,
+    Order,
+    Portfolio,
+    PriceHistory,
+    Trade,
+)
 
 
 class PricingEngine:
     """
     Dynamic Pricing Engine.
-    Formula: price = base_price × (1 + Δ_battles + Δ_market) × rarity_multiplier
+    Formula:
+    price = base_price × (1 + Δ_battles + Δ_market) × rarity_multiplier
 
     - Δ_battles: based on recent win/loss ratio
     - Δ_market: buy/sell volume ratio from recent trades
@@ -58,7 +72,8 @@ class PricingEngine:
             return Decimal('0')
 
         win_rate = Decimal(str(wins)) / Decimal(str(total))
-        # Center around 0.5: win_rate=1.0 → +BATTLE_WEIGHT, win_rate=0.0 → -BATTLE_WEIGHT
+        # Center around 0.5: win_rate=1.0 → +BATTLE_WEIGHT, win_rate=0.0 →
+        # -BATTLE_WEIGHT
         delta = (win_rate - Decimal('0.5')) * 2 * PricingEngine.BATTLE_WEIGHT
         return delta
 
@@ -75,11 +90,12 @@ class PricingEngine:
             executed_at__gte=since
         )
 
-        buy_volume = recent_trades.aggregate(
+        buy_volume = recent_trades.filter(
+            buyer__isnull=False
+        ).aggregate(
             total=Sum('quantity')
         )['total'] or Decimal('0')
 
-        # For sell volume, count trades where creature was sold (seller != None)
         sell_volume = recent_trades.filter(
             seller__isnull=False
         ).aggregate(
@@ -90,7 +106,8 @@ class PricingEngine:
         if total_volume == 0:
             return Decimal('0')
 
-        # Ratio centered at 0: all buys → +MARKET_WEIGHT, all sells → -MARKET_WEIGHT
+        # Ratio centered at 0: all buys → +MARKET_WEIGHT, all sells →
+        # -MARKET_WEIGHT
         buy_ratio = buy_volume / total_volume
         delta = (buy_ratio - Decimal('0.5')) * 2 * PricingEngine.MARKET_WEIGHT
         return delta
@@ -100,7 +117,10 @@ class PricingEngine:
         """
         Calculate the new dynamic price for a creature.
         """
-        base_price = creature.current_price
+        base_price = (
+            creature.pricing_reference_price
+            or creature.current_price
+        )
         battle_delta = cls.calculate_battle_delta(creature)
         market_delta = cls.calculate_market_delta(creature)
         rarity = cls.get_rarity_multiplier(creature)
@@ -110,17 +130,34 @@ class PricingEngine:
 
         # Floor at $0.01, cap at Decimal(12,2) max to avoid DB overflow
         MAX_PRICE = Decimal('9999999999.99')
-        return max(min(new_price, MAX_PRICE), Decimal('0.01')).quantize(Decimal('0.01'))
+        return quantize_money(
+            max(min(new_price, MAX_PRICE), MONEY_CENT)
+        )
 
     @classmethod
     def update_creature_price(cls, creature):
         """Recalculate and persist the new price for a creature."""
-        old_price = creature.current_price
+        with transaction.atomic():
+            locked_creature = Creature.objects.select_for_update().get(
+                pk=creature.pk
+            )
+            old_price = locked_creature.current_price
+            locked_creature.previous_close = old_price
+            new_price = cls.calculate_price(locked_creature)
+            locked_creature.current_price = new_price
+            locked_creature.save(
+                update_fields=['current_price', 'previous_close']
+            )
+            VolatilityService.check_volatility(locked_creature)
+
         creature.previous_close = old_price
-        new_price = cls.calculate_price(creature)
         creature.current_price = new_price
-        creature.save(update_fields=['current_price', 'previous_close'])
-        VolatilityService.check_volatility(creature)
+        creature.pricing_reference_price = (
+            locked_creature.pricing_reference_price
+        )
+        creature.circuit_breaker_expires_at = (
+            locked_creature.circuit_breaker_expires_at
+        )
         return new_price
 
     @classmethod
@@ -172,7 +209,9 @@ class PricingEngine:
             interval=interval
         ).order_by('-timestamp').first()
 
-        open_price = previous_snapshot.close_price if previous_snapshot else price
+        open_price = (
+            previous_snapshot.close_price if previous_snapshot else price
+        )
         high_price = max(price, price_agg['high'] or price)
         low_price = min(price, price_agg['low'] or price)
 
@@ -193,11 +232,18 @@ class PricingEngine:
 
 class TradingEngine:
     """
-    Core trading engine for executing market and limit orders.
-    Handles order creation, matching, portfolio updates, and balance changes.
+    Price-time order book with the Market Maker as last-resort liquidity.
+
+    Limit-to-limit fills execute at the resting order's price. The resting
+    order is the one with the earlier ``created_at`` (UUID breaks exact ties).
     """
 
     COMMISSION_RATE = Trade.COMMISSION_RATE  # 1.5%
+    # A fill rounds commission independently; 3% covers the worst cent split.
+    LIMIT_BUY_RESERVATION_RATE = COMMISSION_RATE * 2
+    MONEY_QUANTUM = MONEY_CENT
+    MIN_NOTIONAL = Decimal('0.01')
+    ACTIVE_STATUSES = [Order.Status.OPEN, Order.Status.PARTIALLY_FILLED]
 
     @classmethod
     def _check_trading_halted(cls, creature):
@@ -209,176 +255,480 @@ class TradingEngine:
             )
 
     @classmethod
+    def _lock_tradable_creature(cls, creature):
+        locked_creature = Creature.objects.select_for_update().get(
+            pk=creature.pk
+        )
+        cls._check_trading_halted(locked_creature)
+        return locked_creature
+
+    @classmethod
+    def _quantize_money(cls, amount):
+        return quantize_money(amount)
+
+    @classmethod
+    def _money_to_cents(cls, amount):
+        return dollars_to_cents(amount)
+
+    @classmethod
+    def _order_amounts(cls, quantity, unit_price):
+        try:
+            quantity = Decimal(str(quantity))
+            unit_price = Decimal(str(unit_price))
+        except (InvalidOperation, TypeError, ValueError):
+            raise ValidationError("Quantity and price must be valid numbers.")
+
+        if quantity <= 0:
+            raise ValidationError("Quantity must be higher than zero.")
+        if unit_price < cls.MONEY_QUANTUM:
+            raise ValidationError("Price must be at least $0.01.")
+
+        raw_notional = quantity * unit_price
+        if raw_notional < cls.MIN_NOTIONAL:
+            raise ValidationError("Order notional must be at least $0.01.")
+
+        unit_price = cls._quantize_money(unit_price)
+        subtotal = cls._quantize_money(quantity * unit_price)
+        commission = cls._quantize_money(
+            subtotal * cls.COMMISSION_RATE
+        )
+        return quantity, unit_price, subtotal, commission
+
+    @classmethod
+    def _realized_cost_basis(cls, portfolio, quantity):
+        return cls._quantize_money(portfolio.average_cost * quantity)
+
+    @classmethod
+    def _reserved_sell_quantity(cls, account, creature):
+        return Order.objects.filter(
+            account=account,
+            creature=creature,
+            order_type=Order.OrderType.SELL,
+            execution_type=Order.ExecutionType.LIMIT,
+            status__in=cls.ACTIVE_STATUSES,
+        ).aggregate(total=Sum('reserved_quantity'))['total'] or Decimal('0')
+
+    @classmethod
+    def _lock_active_limit_order(cls, order):
+        locked_order = Order.objects.select_for_update().select_related(
+            'creature'
+        ).get(pk=order.pk)
+        if (
+            locked_order.execution_type != Order.ExecutionType.LIMIT
+            or locked_order.status not in cls.ACTIVE_STATUSES
+        ):
+            raise ValidationError(
+                "Only open or partially filled limit orders can be processed."
+            )
+        return locked_order
+
+    @classmethod
+    def _lock_accounts(cls, account_ids):
+        from account.models import Account
+
+        accounts = Account.objects.select_for_update().filter(
+            pk__in=account_ids
+        ).order_by('pk')
+        return {account.pk: account for account in accounts}
+
+    @classmethod
+    def _lock_portfolios(cls, account_ids, creature):
+        portfolios = Portfolio.objects.select_for_update().filter(
+            owner_id__in=account_ids,
+            creature=creature,
+        ).order_by('pk')
+        return {portfolio.owner_id: portfolio for portfolio in portfolios}
+
+    @classmethod
+    def _limit_orders_for_update(cls, creature, order_type=None, **filters):
+        queryset = Order.objects.select_for_update().filter(
+            creature=creature,
+            execution_type=Order.ExecutionType.LIMIT,
+            status__in=cls.ACTIVE_STATUSES,
+            **filters,
+        )
+        if order_type is not None:
+            queryset = queryset.filter(order_type=order_type)
+        return list(queryset.order_by('pk'))
+
+    @staticmethod
+    def _buy_priority(order):
+        return (-order.limit_price, order.created_at, str(order.pk))
+
+    @staticmethod
+    def _sell_priority(order):
+        return (order.limit_price, order.created_at, str(order.pk))
+
+    @staticmethod
+    def _resting_price(buy_order, sell_order):
+        buy_time = (buy_order.created_at, str(buy_order.pk))
+        sell_time = (sell_order.created_at, str(sell_order.pk))
+        if buy_time < sell_time:
+            return buy_order.limit_price
+        return sell_order.limit_price
+
+    @classmethod
+    def _planned_cost_cents(cls, fills):
+        total = 0
+        for _, fill_quantity, price in fills:
+            _, _, subtotal, commission = cls._order_amounts(
+                fill_quantity,
+                price,
+            )
+            total += cls._money_to_cents(subtotal + commission)
+        return total
+
+    @classmethod
+    def _reserved_buy_tranche(cls, order, quantity):
+        if quantity >= order.remaining_quantity:
+            return order.reserved_cents
+        _, _, subtotal, commission = cls._order_amounts(
+            quantity,
+            order.limit_price,
+        )
+        return min(
+            order.reserved_cents,
+            cls._money_to_cents(subtotal + commission),
+        )
+
+    @classmethod
+    def _mark_filled(cls, order, quantity):
+        order.filled_quantity += quantity
+        if order.is_fully_filled:
+            order.filled_quantity = order.quantity
+            order.status = Order.Status.FILLED
+        else:
+            order.status = Order.Status.PARTIALLY_FILLED
+
+    @classmethod
+    def _credit_buyer_portfolio(
+        cls,
+        portfolios,
+        buyer,
+        creature,
+        quantity,
+        price,
+    ):
+        portfolio = portfolios.get(buyer.pk)
+        if portfolio is None:
+            portfolio = Portfolio.objects.create(
+                owner=buyer,
+                creature=creature,
+                quantity=quantity,
+                average_cost=price,
+            )
+            portfolios[buyer.pk] = portfolio
+            return
+
+        total_quantity = portfolio.quantity + quantity
+        portfolio.average_cost = cls._quantize_money(
+            (
+                portfolio.average_cost * portfolio.quantity
+                + price * quantity
+            )
+            / total_quantity
+        )
+        portfolio.quantity = total_quantity
+        portfolio.save(update_fields=['quantity', 'average_cost'])
+
+    @classmethod
+    def _debit_seller_portfolio(
+        cls,
+        portfolios,
+        seller,
+        creature,
+        quantity,
+    ):
+        portfolio = portfolios.get(seller.pk)
+        if portfolio is None or portfolio.quantity < quantity:
+            raise ValidationError(
+                f"Insufficient {creature.name} holdings for execution."
+            )
+        realized_cost_basis = cls._realized_cost_basis(portfolio, quantity)
+        portfolio.quantity -= quantity
+        if portfolio.quantity == 0:
+            portfolio.delete()
+            portfolios.pop(seller.pk)
+        else:
+            portfolio.save(update_fields=['quantity'])
+        return realized_cost_basis
+
+    @classmethod
+    def _execute_fill(
+        cls,
+        buy_order,
+        sell_order,
+        quantity,
+        price,
+        accounts,
+        portfolios,
+    ):
+        buyer = accounts.get(buy_order.account_id) if buy_order else None
+        seller = accounts.get(sell_order.account_id) if sell_order else None
+        if buyer is not None and seller is not None and buyer.pk == seller.pk:
+            raise ValidationError("Self-trades are not allowed.")
+
+        quantity, price, subtotal, commission = cls._order_amounts(
+            quantity,
+            price,
+        )
+        actual_cost_cents = cls._money_to_cents(subtotal + commission)
+
+        if buyer is not None:
+            if buy_order.execution_type == Order.ExecutionType.LIMIT:
+                reserved_tranche = cls._reserved_buy_tranche(
+                    buy_order,
+                    quantity,
+                )
+                if reserved_tranche < actual_cost_cents:
+                    raise ValidationError(
+                        "BUY order reservation is insufficient."
+                    )
+                buyer.balance_cents += reserved_tranche - actual_cost_cents
+                buy_order.reserved_cents -= reserved_tranche
+            else:
+                buyer.balance_cents -= actual_cost_cents
+            buyer.save(update_fields=['balance_cents'])
+            cls._credit_buyer_portfolio(
+                portfolios,
+                buyer,
+                buy_order.creature,
+                quantity,
+                price,
+            )
+
+        realized_cost_basis = None
+        if seller is not None:
+            realized_cost_basis = cls._debit_seller_portfolio(
+                portfolios,
+                seller,
+                sell_order.creature,
+                quantity,
+            )
+            seller.balance_cents += cls._money_to_cents(subtotal - commission)
+            seller.save(update_fields=['balance_cents'])
+            if sell_order.execution_type == Order.ExecutionType.LIMIT:
+                if sell_order.reserved_quantity < quantity:
+                    raise ValidationError(
+                        "SELL order reservation is insufficient."
+                    )
+                sell_order.reserved_quantity -= quantity
+
+        if buy_order is not None:
+            cls._mark_filled(buy_order, quantity)
+            if buy_order.is_fully_filled:
+                buy_order.reserved_cents = 0
+            buy_order.save(update_fields=[
+                'filled_quantity',
+                'reserved_cents',
+                'status',
+            ])
+        if sell_order is not None:
+            cls._mark_filled(sell_order, quantity)
+            if sell_order.is_fully_filled:
+                sell_order.reserved_quantity = Decimal('0')
+            sell_order.save(update_fields=[
+                'filled_quantity',
+                'reserved_quantity',
+                'status',
+            ])
+
+        return Trade.objects.create(
+            buyer=buyer,
+            seller=seller,
+            creature=(buy_order or sell_order).creature,
+            buy_order=buy_order,
+            sell_order=sell_order,
+            quantity=quantity,
+            price_per_unit=price,
+            commission=commission,
+            realized_cost_basis=realized_cost_basis,
+        )
+
+    @classmethod
+    def _market_buy_plan(cls, sell_orders, quantity, current_price):
+        remaining = quantity
+        fills = []
+        for sell_order in sorted(sell_orders, key=cls._sell_priority):
+            if remaining <= 0:
+                break
+            fill_quantity = min(remaining, sell_order.remaining_quantity)
+            fills.append((sell_order, fill_quantity, sell_order.limit_price))
+            remaining -= fill_quantity
+        if remaining > 0:
+            fills.append((None, remaining, current_price))
+        return fills
+
+    @classmethod
+    def _market_sell_plan(cls, buy_orders, quantity, current_price):
+        remaining = quantity
+        fills = []
+        for buy_order in sorted(buy_orders, key=cls._buy_priority):
+            if remaining <= 0:
+                break
+            fill_quantity = min(remaining, buy_order.remaining_quantity)
+            fills.append((buy_order, fill_quantity, buy_order.limit_price))
+            remaining -= fill_quantity
+        if remaining > 0:
+            fills.append((None, remaining, current_price))
+        return fills
+
+    @classmethod
     def execute_market_buy(cls, account, creature, quantity):
-        """
-        Execute an immediate market buy order.
-        Deducts balance, creates Portfolio entry, records Trade.
-        """
-        cls._check_trading_halted(creature)
-        quantity = Decimal(str(quantity))
-        price = creature.current_price
-        subtotal = quantity * price
-        commission = (subtotal * cls.COMMISSION_RATE).quantize(Decimal('0.01'))
-        total_cost = subtotal + commission
-
+        """Fill eligible asks first and send only the remainder to the MM."""
         with transaction.atomic():
-            # Re-fetch account with row lock
-            from account.models import Account
-            locked_account = Account.objects.select_for_update().get(pk=account.pk)
-
-            if locked_account.balance_cents < int(total_cost * 100):
+            creature = cls._lock_tradable_creature(creature)
+            quantity, current_price, _, _ = cls._order_amounts(
+                quantity,
+                creature.current_price,
+            )
+            sell_orders = cls._limit_orders_for_update(
+                creature,
+                Order.OrderType.SELL,
+                limit_price__lte=current_price,
+            )
+            sell_orders = [
+                order for order in sell_orders
+                if order.account_id != account.pk
+            ]
+            account_ids = {account.pk}
+            account_ids.update(order.account_id for order in sell_orders)
+            accounts = cls._lock_accounts(account_ids)
+            portfolios = cls._lock_portfolios(account_ids, creature)
+            fills = cls._market_buy_plan(
+                sell_orders,
+                quantity,
+                current_price,
+            )
+            total_cost_cents = cls._planned_cost_cents(fills)
+            buyer = accounts[account.pk]
+            if buyer.balance_cents < total_cost_cents:
+                total_cost = Decimal(total_cost_cents) / Decimal('100')
                 raise ValidationError(
                     f"Insufficient funds. Need ${total_cost}, "
-                    f"have ${locked_account.balance_dollars}"
+                    f"have ${buyer.balance_dollars}"
                 )
 
-            # Create the order record
-            order = Order.objects.create(
-                account=locked_account,
+            market_order = Order.objects.create(
+                account=buyer,
                 creature=creature,
                 order_type=Order.OrderType.BUY,
                 execution_type=Order.ExecutionType.MARKET,
                 quantity=quantity,
-                filled_quantity=quantity,
-                status=Order.Status.FILLED,
+                status=Order.Status.OPEN,
             )
-
-            # Create the trade record
-            trade = Trade.objects.create(
-                buyer=locked_account,
-                seller=None,  # Market Maker
-                creature=creature,
-                buy_order=order,
-                quantity=quantity,
-                price_per_unit=price,
-                commission=commission,
-            )
-
-            # Deduct balance
-            locked_account.balance_cents -= int(total_cost * 100)
-            locked_account.save(update_fields=['balance_cents'])
-
-            # Update or create portfolio entry
-            portfolio, created = Portfolio.objects.select_for_update().get_or_create(
-                owner=locked_account,
-                creature=creature,
-                defaults={
-                    'quantity': quantity,
-                    'average_cost': price,
-                }
-            )
-            if not created:
-                # Weighted average cost
-                total_qty = portfolio.quantity + quantity
-                if total_qty > 0:
-                    portfolio.average_cost = (
-                        (portfolio.average_cost * portfolio.quantity + price * quantity)
-                        / total_qty
-                    ).quantize(Decimal('0.01'))
-                portfolio.quantity = total_qty
-                portfolio.save(update_fields=['quantity', 'average_cost'])
-
+            trade = None
+            for sell_order, fill_quantity, price in fills:
+                trade = cls._execute_fill(
+                    market_order,
+                    sell_order,
+                    fill_quantity,
+                    price,
+                    accounts,
+                    portfolios,
+                )
             return trade
 
     @classmethod
     def execute_market_sell(cls, account, creature, quantity):
-        """
-        Execute an immediate market sell order.
-        Credits balance, reduces Portfolio, records Trade.
-        """
-        cls._check_trading_halted(creature)
-        quantity = Decimal(str(quantity))
-        price = creature.current_price
-        subtotal = quantity * price
-        commission = (subtotal * cls.COMMISSION_RATE).quantize(Decimal('0.01'))
-        net_proceeds = subtotal - commission
-
+        """Fill eligible bids first and send only the remainder to the MM."""
         with transaction.atomic():
-            from account.models import Account
-            locked_account = Account.objects.select_for_update().get(pk=account.pk)
-
-            # Check portfolio
-            try:
-                portfolio = Portfolio.objects.select_for_update().get(
-                    owner=locked_account,
-                    creature=creature
-                )
-            except Portfolio.DoesNotExist:
+            creature = cls._lock_tradable_creature(creature)
+            quantity, current_price, _, _ = cls._order_amounts(
+                quantity,
+                creature.current_price,
+            )
+            buy_orders = cls._limit_orders_for_update(
+                creature,
+                Order.OrderType.BUY,
+                limit_price__gte=current_price,
+            )
+            buy_orders = [
+                order for order in buy_orders
+                if order.account_id != account.pk
+            ]
+            account_ids = {account.pk}
+            account_ids.update(order.account_id for order in buy_orders)
+            accounts = cls._lock_accounts(account_ids)
+            portfolios = cls._lock_portfolios(account_ids, creature)
+            seller = accounts[account.pk]
+            portfolio = portfolios.get(seller.pk)
+            if portfolio is None:
                 raise ValidationError(
                     f"You don't own any {creature.name} to sell."
                 )
-
-            if portfolio.quantity < quantity:
+            reserved_quantity = cls._reserved_sell_quantity(seller, creature)
+            available_quantity = portfolio.quantity - reserved_quantity
+            if available_quantity < quantity:
                 raise ValidationError(
-                    f"Insufficient holdings. Own {portfolio.quantity}, "
+                    f"Insufficient available holdings. "
+                    f"Own {portfolio.quantity}, reserved {reserved_quantity}, "
                     f"trying to sell {quantity}."
                 )
 
-            # Create order
-            order = Order.objects.create(
-                account=locked_account,
+            market_order = Order.objects.create(
+                account=seller,
                 creature=creature,
                 order_type=Order.OrderType.SELL,
                 execution_type=Order.ExecutionType.MARKET,
                 quantity=quantity,
-                filled_quantity=quantity,
-                status=Order.Status.FILLED,
+                status=Order.Status.OPEN,
             )
-
-            # Create trade
-            trade = Trade.objects.create(
-                buyer=None,  # Market Maker buys
-                seller=locked_account,
-                creature=creature,
-                sell_order=order,
-                quantity=quantity,
-                price_per_unit=price,
-                commission=commission,
+            fills = cls._market_sell_plan(
+                buy_orders,
+                quantity,
+                current_price,
             )
-
-            # Credit balance
-            locked_account.balance_cents += int(net_proceeds * 100)
-            locked_account.save(update_fields=['balance_cents'])
-
-            # Update portfolio
-            portfolio.quantity -= quantity
-            if portfolio.quantity <= 0:
-                portfolio.delete()
-            else:
-                portfolio.save(update_fields=['quantity'])
-
+            trade = None
+            for buy_order, fill_quantity, price in fills:
+                trade = cls._execute_fill(
+                    buy_order,
+                    market_order,
+                    fill_quantity,
+                    price,
+                    accounts,
+                    portfolios,
+                )
             return trade
 
     @classmethod
-    def place_limit_order(cls, account, creature, order_type, quantity, limit_price):
+    def place_limit_order(cls, account, creature,
+                          order_type, quantity, limit_price):
         """
-        Place a limit order that will be executed when the price crosses the threshold.
+        Place a limit order that executes when the price crosses the threshold.
         For BUY limits: executes when price <= limit_price.
         For SELL limits: executes when price >= limit_price.
         """
-        quantity = Decimal(str(quantity))
-        limit_price = Decimal(str(limit_price))
+        quantity, limit_price, max_cost, _ = cls._order_amounts(
+            quantity,
+            limit_price,
+        )
 
         with transaction.atomic():
             from account.models import Account
-            locked_account = Account.objects.select_for_update().get(pk=account.pk)
+            creature = cls._lock_tradable_creature(creature)
+            locked_account = Account.objects.select_for_update().get(
+                pk=account.pk
+            )
 
             if order_type == Order.OrderType.BUY:
-                # Reserve funds for buy limit order
-                max_cost = quantity * limit_price
-                commission = (max_cost * cls.COMMISSION_RATE).quantize(Decimal('0.01'))
-                total_reserved = max_cost + commission
+                reservation_commission = cls._quantize_money(
+                    max_cost * cls.LIMIT_BUY_RESERVATION_RATE
+                )
+                total_reserved = max_cost + reservation_commission
+                total_reserved_cents = cls._money_to_cents(total_reserved)
 
-                if locked_account.balance_cents < int(total_reserved * 100):
+                if locked_account.balance_cents < total_reserved_cents:
                     raise ValidationError(
                         f"Insufficient funds to reserve for limit order. "
                         f"Need ${total_reserved}."
                     )
-                locked_account.balance_cents -= int(total_reserved * 100)
+                locked_account.balance_cents -= total_reserved_cents
                 locked_account.save(update_fields=['balance_cents'])
+                reserved_cents = total_reserved_cents
+                reserved_quantity = Decimal('0')
 
             elif order_type == Order.OrderType.SELL:
-                # Verify holdings
                 try:
                     portfolio = Portfolio.objects.select_for_update().get(
                         owner=locked_account,
@@ -388,10 +738,19 @@ class TradingEngine:
                     raise ValidationError(
                         f"You don't own any {creature.name} to sell."
                     )
-                if portfolio.quantity < quantity:
+                reserved_quantity = cls._reserved_sell_quantity(
+                    locked_account,
+                    creature,
+                )
+                available_quantity = portfolio.quantity - reserved_quantity
+                if available_quantity < quantity:
                     raise ValidationError(
-                        f"Insufficient holdings for limit sell."
+                        "Insufficient available holdings for limit sell."
                     )
+                reserved_cents = 0
+                reserved_quantity = quantity
+            else:
+                raise ValidationError("Unsupported order type.")
 
             order = Order.objects.create(
                 account=locked_account,
@@ -400,6 +759,8 @@ class TradingEngine:
                 execution_type=Order.ExecutionType.LIMIT,
                 quantity=quantity,
                 limit_price=limit_price,
+                reserved_cents=reserved_cents,
+                reserved_quantity=reserved_quantity,
                 status=Order.Status.OPEN,
             )
             return order
@@ -407,182 +768,203 @@ class TradingEngine:
     @classmethod
     def check_limit_orders(cls, creature):
         """
-        Check and execute pending limit orders for a creature
-        when the price crosses their threshold.
+        Match the P2P book, then execute MM-eligible remainders.
+
+        The creature, active orders, accounts, and portfolios are locked in
+        that stable order so concurrent workers observe each fill once.
         """
         with transaction.atomic():
-            current_price = creature.current_price
-            executed_count = 0
-
-            # BUY limits: execute when current_price <= limit_price
-            buy_orders = Order.objects.filter(
-                creature=creature,
-                order_type=Order.OrderType.BUY,
-                execution_type=Order.ExecutionType.LIMIT,
-                status__in=[Order.Status.OPEN, Order.Status.PARTIALLY_FILLED],
-                limit_price__gte=current_price,
-            ).select_for_update()
-
-            for order in buy_orders:
-                try:
-                    cls._execute_limit_buy(order, current_price)
-                    executed_count += 1
-                except (ValidationError, Exception):
-                    continue
-
-            # SELL limits: execute when current_price >= limit_price
-            sell_orders = Order.objects.filter(
-                creature=creature,
-                order_type=Order.OrderType.SELL,
-                execution_type=Order.ExecutionType.LIMIT,
-                status__in=[Order.Status.OPEN, Order.Status.PARTIALLY_FILLED],
-                limit_price__lte=current_price,
-            ).select_for_update()
-
-            for order in sell_orders:
-                try:
-                    cls._execute_limit_sell(order, current_price)
-                    executed_count += 1
-                except (ValidationError, Exception):
-                    continue
-
+            try:
+                creature = cls._lock_tradable_creature(creature)
+            except ValidationError:
+                return 0
+            current_price = cls._quantize_money(creature.current_price)
+            orders = cls._limit_orders_for_update(creature)
+            if not orders:
+                return 0
+            account_ids = {order.account_id for order in orders}
+            accounts = cls._lock_accounts(account_ids)
+            portfolios = cls._lock_portfolios(account_ids, creature)
+            buy_orders = sorted(
+                (
+                    order for order in orders
+                    if order.order_type == Order.OrderType.BUY
+                ),
+                key=cls._buy_priority,
+            )
+            sell_orders = sorted(
+                (
+                    order for order in orders
+                    if order.order_type == Order.OrderType.SELL
+                ),
+                key=cls._sell_priority,
+            )
+            executed_count = cls._match_p2p_orders(
+                buy_orders,
+                sell_orders,
+                accounts,
+                portfolios,
+            )
+            executed_count += cls._fill_limits_with_market_maker(
+                buy_orders,
+                sell_orders,
+                current_price,
+                accounts,
+                portfolios,
+            )
             return executed_count
 
     @classmethod
+    def _next_cross(cls, buy_orders, sell_orders):
+        for buy_order in buy_orders:
+            if buy_order.status not in cls.ACTIVE_STATUSES:
+                continue
+            for sell_order in sell_orders:
+                if sell_order.status not in cls.ACTIVE_STATUSES:
+                    continue
+                if buy_order.limit_price < sell_order.limit_price:
+                    break
+                if buy_order.account_id != sell_order.account_id:
+                    return buy_order, sell_order
+        return None
+
+    @classmethod
+    def _match_p2p_orders(
+        cls,
+        buy_orders,
+        sell_orders,
+        accounts,
+        portfolios,
+    ):
+        count = 0
+        while True:
+            cross = cls._next_cross(buy_orders, sell_orders)
+            if cross is None:
+                return count
+            buy_order, sell_order = cross
+            quantity = min(
+                buy_order.remaining_quantity,
+                sell_order.remaining_quantity,
+            )
+            cls._execute_fill(
+                buy_order,
+                sell_order,
+                quantity,
+                cls._resting_price(buy_order, sell_order),
+                accounts,
+                portfolios,
+            )
+            count += 1
+
+    @classmethod
+    def _fill_limits_with_market_maker(
+        cls,
+        buy_orders,
+        sell_orders,
+        current_price,
+        accounts,
+        portfolios,
+    ):
+        count = 0
+        for buy_order in buy_orders:
+            if (
+                buy_order.status in cls.ACTIVE_STATUSES
+                and buy_order.limit_price >= current_price
+            ):
+                cls._execute_fill(
+                    buy_order,
+                    None,
+                    buy_order.remaining_quantity,
+                    current_price,
+                    accounts,
+                    portfolios,
+                )
+                count += 1
+        for sell_order in sell_orders:
+            if (
+                sell_order.status in cls.ACTIVE_STATUSES
+                and sell_order.limit_price <= current_price
+            ):
+                cls._execute_fill(
+                    None,
+                    sell_order,
+                    sell_order.remaining_quantity,
+                    current_price,
+                    accounts,
+                    portfolios,
+                )
+                count += 1
+        return count
+
+    @classmethod
     def _execute_limit_buy(cls, order, execution_price):
-        """Execute a pending buy limit order at the given price."""
-        remaining = order.remaining_quantity
-
-        with transaction.atomic():
-            from account.models import Account
-            account = Account.objects.select_for_update().get(pk=order.account_id)
-
-            subtotal = remaining * execution_price
-            commission = (subtotal * cls.COMMISSION_RATE).quantize(Decimal('0.01'))
-
-            # Refund the difference if execution price < limit price
-            reserved_cost = remaining * order.limit_price
-            reserved_commission = (reserved_cost * cls.COMMISSION_RATE).quantize(Decimal('0.01'))
-            total_reserved = reserved_cost + reserved_commission
-            actual_cost = subtotal + commission
-            refund = int((total_reserved - actual_cost) * 100)
-
-            if refund > 0:
-                account.balance_cents += refund
-                account.save(update_fields=['balance_cents'])
-
-            # Create trade
-            Trade.objects.create(
-                buyer=account,
-                seller=None,
-                creature=order.creature,
-                buy_order=order,
-                quantity=remaining,
-                price_per_unit=execution_price,
-                commission=commission,
-            )
-
-            # Update portfolio
-            portfolio, created = Portfolio.objects.select_for_update().get_or_create(
-                owner=account,
-                creature=order.creature,
-                defaults={
-                    'quantity': remaining,
-                    'average_cost': execution_price,
-                }
-            )
-            if not created:
-                total_qty = portfolio.quantity + remaining
-                portfolio.average_cost = (
-                    (portfolio.average_cost * portfolio.quantity + execution_price * remaining)
-                    / total_qty
-                ).quantize(Decimal('0.01'))
-                portfolio.quantity = total_qty
-                portfolio.save(update_fields=['quantity', 'average_cost'])
-
-            # Update order status
-            order.filled_quantity = order.quantity
-            order.status = Order.Status.FILLED
-            order.save(update_fields=['filled_quantity', 'status'])
+        """Compatibility entry point for one locked BUY-to-MM fill."""
+        return cls._execute_limit_mm_fill(
+            order,
+            execution_price,
+            Order.OrderType.BUY,
+        )
 
     @classmethod
     def _execute_limit_sell(cls, order, execution_price):
-        """Execute a pending sell limit order at the given price."""
-        remaining = order.remaining_quantity
+        """Compatibility entry point for one locked SELL-to-MM fill."""
+        return cls._execute_limit_mm_fill(
+            order,
+            execution_price,
+            Order.OrderType.SELL,
+        )
 
+    @classmethod
+    def _execute_limit_mm_fill(cls, order, execution_price, order_type):
+        """Execute one active limit remainder against Market Maker liquidity."""
         with transaction.atomic():
-            from account.models import Account
-            account = Account.objects.select_for_update().get(pk=order.account_id)
-
-            subtotal = remaining * execution_price
-            commission = (subtotal * cls.COMMISSION_RATE).quantize(Decimal('0.01'))
-            net_proceeds = subtotal - commission
-
-            # Check portfolio still has holdings
-            try:
-                portfolio = Portfolio.objects.select_for_update().get(
-                    owner=account,
-                    creature=order.creature
-                )
-            except Portfolio.DoesNotExist:
-                order.status = Order.Status.CANCELLED
-                order.save(update_fields=['status'])
-                return
-
-            if portfolio.quantity < remaining:
-                order.status = Order.Status.CANCELLED
-                order.save(update_fields=['status'])
-                return
-
-            # Create trade
-            Trade.objects.create(
-                buyer=None,
-                seller=account,
-                creature=order.creature,
-                sell_order=order,
-                quantity=remaining,
-                price_per_unit=execution_price,
-                commission=commission,
+            order = cls._lock_active_limit_order(order)
+            if order.order_type != order_type:
+                raise ValidationError("Limit order side does not match fill.")
+            cls._check_trading_halted(order.creature)
+            accounts = cls._lock_accounts({order.account_id})
+            portfolios = cls._lock_portfolios(
+                {order.account_id},
+                order.creature,
             )
-
-            # Credit balance
-            account.balance_cents += int(net_proceeds * 100)
-            account.save(update_fields=['balance_cents'])
-
-            # Update portfolio
-            portfolio.quantity -= remaining
-            if portfolio.quantity <= 0:
-                portfolio.delete()
-            else:
-                portfolio.save(update_fields=['quantity'])
-
-            # Update order
-            order.filled_quantity = order.quantity
-            order.status = Order.Status.FILLED
-            order.save(update_fields=['filled_quantity', 'status'])
+            buy_order = (
+                order if order_type == Order.OrderType.BUY else None
+            )
+            sell_order = (
+                order if order_type == Order.OrderType.SELL else None
+            )
+            cls._execute_fill(
+                buy_order,
+                sell_order,
+                order.remaining_quantity,
+                execution_price,
+                accounts,
+                portfolios,
+            )
+            return True
 
     @classmethod
     def cancel_order(cls, order):
-        """Cancel an open limit order and refund reserved funds if applicable."""
-        if order.status not in [Order.Status.OPEN, Order.Status.PARTIALLY_FILLED]:
-            raise ValidationError("Only open or partially filled orders can be cancelled.")
-
+        """Cancel an active limit order and release its exact remainder."""
         with transaction.atomic():
-            from account.models import Account
+            order = cls._lock_active_limit_order(order)
 
             if order.order_type == Order.OrderType.BUY:
-                # Refund reserved funds
-                remaining = order.remaining_quantity
-                reserved_cost = remaining * order.limit_price
-                reserved_commission = (reserved_cost * cls.COMMISSION_RATE).quantize(Decimal('0.01'))
-                refund = int((reserved_cost + reserved_commission) * 100)
-
-                account = Account.objects.select_for_update().get(pk=order.account_id)
-                account.balance_cents += refund
+                account = cls._lock_accounts({order.account_id})[
+                    order.account_id
+                ]
+                account.balance_cents += order.reserved_cents
                 account.save(update_fields=['balance_cents'])
+                order.reserved_cents = 0
+            else:
+                order.reserved_quantity = Decimal('0')
 
             order.status = Order.Status.CANCELLED
-            order.save(update_fields=['status'])
+            order.save(update_fields=[
+                'reserved_cents',
+                'reserved_quantity',
+                'status',
+            ])
             return order
 
 
@@ -619,23 +1001,41 @@ class MarketIndicesService:
         """
         from creature.models import Creature
 
-        creatures = Creature.objects.filter(
+        creatures = list(Creature.objects.filter(
             type=creature_type
-        ).exclude(current_price=0)
+        ).exclude(current_price=0).annotate(
+            trade_volume=Sum('trades__quantity')
+        ))
 
-        if not creatures.exists():
+        if not creatures:
             return None
 
-        count = creatures.count()
-        total_volume = Trade.objects.filter(
-            creature__type=creature_type,
-        ).aggregate(total=Sum('quantity'))['total'] or Decimal('0')
-
-        weighted_sum = Decimal('0')
-        for c in creatures:
-            weighted_sum += c.current_price
-
-        avg_price = (weighted_sum / Decimal(str(count))).quantize(Decimal('0.01'))
+        count = len(creatures)
+        total_volume = sum(
+            (creature.trade_volume or Decimal('0') for creature in creatures),
+            Decimal('0'),
+        )
+        if total_volume:
+            weighted_sum = sum(
+                (
+                    creature.current_price
+                    * (creature.trade_volume or Decimal('0'))
+                    for creature in creatures
+                ),
+                Decimal('0'),
+            )
+            avg_price = (weighted_sum / total_volume).quantize(
+                Decimal('0.01')
+            )
+        else:
+            # With no observed volume, every creature receives equal weight.
+            price_sum = sum(
+                (creature.current_price for creature in creatures),
+                Decimal('0'),
+            )
+            avg_price = (
+                price_sum / Decimal(count)
+            ).quantize(Decimal('0.01'))
 
         last_index = MarketIndex.objects.filter(
             creature_type=creature_type
@@ -675,17 +1075,21 @@ class VolatilityService:
             / creature.previous_close * 100
         ).quantize(Decimal('0.01'))
 
-        if abs(change_pct) >= cls.VOLATILITY_THRESHOLD:
-            if not creature.is_trading_halted:
-                cls._trigger_circuit_breaker(creature, change_pct)
-            cls._notify_holders(creature, change_pct)
+        if abs(change_pct) < cls.VOLATILITY_THRESHOLD:
+            return
+        if creature.is_trading_halted:
+            return
+
+        cls._trigger_circuit_breaker(creature, change_pct)
+        cls._notify_holders(creature, change_pct)
 
     @classmethod
     def _trigger_circuit_breaker(cls, creature, change_pct):
         """Freeze trading for the creature."""
         from django.utils import timezone
         creature.circuit_breaker_expires_at = (
-            timezone.now() + timezone.timedelta(minutes=cls.CIRCUIT_BREAKER_DURATION)
+            timezone.now()
+            + timezone.timedelta(minutes=cls.CIRCUIT_BREAKER_DURATION)
         )
         creature.save(update_fields=['circuit_breaker_expires_at'])
 
@@ -705,10 +1109,15 @@ class VolatilityService:
             notifications.append(Notification(
                 user=entry.owner,
                 notification_type=Notification.Type.VOLATILITY_ALERT,
-                title=f"{emoji} {creature.name} {direction} {abs(change_pct)}%",
+                title=f"{emoji} {
+                    creature.name} {direction} {
+                    abs(change_pct)}%",
                 message=(
-                    f"{creature.name} price moved {abs(change_pct)}% in minutes. "
-                    f"Trading has been halted for {cls.CIRCUIT_BREAKER_DURATION} minutes. "
+                    f"{
+                        creature.name} price moved {
+                        abs(change_pct)}% in minutes. "
+                    f"Trading has been halted for {
+                        cls.CIRCUIT_BREAKER_DURATION} minutes. "
                     f"Current price: ${creature.current_price}."
                 ),
                 related_creature=creature,
