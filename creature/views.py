@@ -91,7 +91,7 @@ def train_creature_view(request, portfolio_id):
     cost = TrainingService.get_training_cost(creature)
 
     try:
-        task_id = TrainingService.train_creature(
+        TrainingService.train_creature(
             request.user, creature, portfolio
         )
         messages.success(
@@ -187,34 +187,3 @@ def creature_battle_history_view(request, creature_id):
         'creature': creature,
         'battles': battles,
     })
-
-    portfolio = get_object_or_404(
-        Portfolio, pk=portfolio_id, owner=request.user
-    )
-    creature = portfolio.creature
-    cost = TrainingService.get_training_cost(creature)
-
-    try:
-        task_id = TrainingService.train_creature(
-            request.user, creature, portfolio
-        )
-        messages.success(
-            request,
-            f"Training initiated for {creature.name}! Cost: ${cost}. "
-            f"Stats will boost in ~30 seconds."
-        )
-    except ValidationError as e:
-        messages.error(request, str(e.message if hasattr(e, 'message') else e))
-    except Exception as e:
-        logger.exception(f"Failed to start training for creature {creature.pk}")
-        msg = str(getattr(e, 'message', e))
-        if 'Connection refused' in msg or 'connect' in msg.lower():
-            messages.error(
-                request,
-                "Could not connect to the background worker (Redis/Celery). "
-                "Make sure Redis and Celery are running."
-            )
-        else:
-            messages.error(request, f"Failed to start training: {msg}")
-
-    return redirect('trading:portfolio')

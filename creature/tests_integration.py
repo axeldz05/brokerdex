@@ -11,7 +11,7 @@ from account.models import Account
 from .models import Creature, Ability, EggTemplate, Incubation, Battle, BattleInvestment
 from .services import IncubationService, TrainingService, BattleService
 from .tasks import matchmake_random_battle, process_battle_turn
-from trading.models import Portfolio, Notification
+from trading.models import Notification, Portfolio, Trade
 
 
 class IncubationIntegrationTests(TestCase):
@@ -228,9 +228,10 @@ class TrainingIntegrationTests(TestCase):
 
     def test_training_calls_celery_task(self):
         self._login()
-        self.client.post(
-            reverse('creature:train_creature', args=[self.portfolio.pk])
-        )
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.post(
+                reverse('creature:train_creature', args=[self.portfolio.pk])
+            )
         self.mock_async.assert_called_once()
 
     def test_training_not_own_portfolio_404(self):
@@ -380,11 +381,13 @@ class BattleServiceIntegrationTests(TestCase):
 
     def test_record_turn_investments(self):
         battle = Battle.objects.start_battle(self.creature_1, self.creature_2)
-        Portfolio.objects.create(
-            owner=self.user,
+        Trade.objects.create(
+            buyer=self.user,
+            seller=None,
             creature=self.creature_1,
             quantity=Decimal('3'),
-            average_cost=Decimal('100.00'),
+            price_per_unit=Decimal('100.00'),
+            commission=Decimal('4.50'),
         )
 
         BattleService.record_turn_investments(battle, 1)
@@ -392,7 +395,8 @@ class BattleServiceIntegrationTests(TestCase):
         inv = BattleInvestment.objects.filter(battle=battle, turn_number=1)
         self.assertEqual(inv.count(), 2)
         c1_inv = inv.get(creature=self.creature_1)
-        self.assertGreaterEqual(c1_inv.investor_count, 1)
+        self.assertEqual(c1_inv.investor_count, 1)
+        self.assertEqual(c1_inv.total_amount, Decimal('3'))
 
     def test_get_active_battles_returns_active_only(self):
         battle = BattleService.start_battle(self.creature_1, self.creature_2)

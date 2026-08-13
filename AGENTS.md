@@ -1,277 +1,266 @@
-# Brokerdex: AI Agent Context & Development Rules
+# Brokerdex: contexto y reglas para agentes
 
-STRICT RULES YOU MUST FOLLOW:
-- grep before read, discover existing patterns before implementing.
-- commit after each implemented functionality. Fix errors when appeared.
+Este documento describe el estado real del repositorio. `cursorrules.md` define el flujo operativo y `.cursor/skills/` contiene los procedimientos obligatorios de TDD y refactor.
 
-## 1. Domínio y Stack Tecnológico
+## 1. Producto y stack actual
 
-**Filosofía:** Brokerdex es una plataforma de trading gamificada donde Pokémon = activos financieros. Sistema P2P de emparejamiento (Market Maker como contraparte cuando no hay liquidez). Propiedad fraccional permitida.
+Brokerdex es una plataforma de trading gamificada: las criaturas son activos financieros fraccionables, las batallas afectan su valuación y el Market Maker actúa cuando no hay contraparte P2P.
 
-**Stack:**
-- **Backend:** Django 5.1 + PostgreSQL (`brokerdex_db`, usuario `brokerdex_user`)
-- **Async:** Celery con Redis `redis://localhost:6379/0`
-- **Frontend:** Django Templates + Bootstrap 5 (CDN) + Chart.js (CDN) + Boxicons/Bootstrap Icons
-- **Auth:** Custom user model (`Account` basado en `AbstractBaseUser`), login con email o username
+- Python 3.13 administrado con `uv` (`pyproject.toml` + `uv.lock`).
+- Django 5.2.x con PostgreSQL.
+- Celery 5.6.x con Redis en `redis://localhost:6379/0`.
+- Django Templates, Bootstrap 5, Chart.js e iconos cargados por CDN.
+- Auth propia con `account.Account(AbstractBaseUser, PermissionsMixin)`.
+- DRF está instalado, pero la UI y la mayoría de endpoints actuales usan views Django y `JsonResponse`.
+- `Procfile` levanta `web`, `worker` y `beat`; `honcho` los orquesta en desarrollo.
+- No hay CI, settings por ambiente, `.env.example`, servidor web productivo ni pipeline de static files.
 
----
+La configuración actual de `brokerdex/settings.py` es local y no production-ready: contiene `SECRET_KEY`, `DEBUG=True`, PostgreSQL y Redis hardcodeados. No asumir que ya existe configuración por ambiente.
 
-## 2. Estructura del Proyecto
+## 2. Mapa del repositorio
 
+```text
+account/       identidad, perfil y saldo
+banking/       transferencias, depósitos y retiros
+creature/      criaturas, habilidades, batallas, incubación y entrenamiento
+dashboard/     resumen principal del usuario
+trading/       portfolio, órdenes, trades, precios, índices y alertas
+brokerdex/     settings, URLs raíz, WSGI/ASGI y app Celery canónica
+templates/     layout y páginas públicas
+seed_data/     JSON de criaturas, habilidades, huevos y demo
+.cursor/       reglas y skills del proyecto
 ```
-brokerdex-django/
-  account/           # Auth, perfiles, balance
-  banking/           # Transferencias, depósitos, retiros
-  creature/          # Pokémon, batallas, incubación, entrenamiento
-  dashboard/         # Dashboard principal
-  trading/           # Mercado, portfolio, órdenes, trades, precios
-  templates/         # Layout base, landing page
-  brokerdex/         # Settings, URLs raíz, Celery app
-  seed_data/         # Datos iniciales JSON
-```
 
-### 2.1 App: `account` — Usuarios y Balance
-- **Modelo:** `Account(AbstractBaseUser)` — `email`, `username`, `balance_cents` (BigIntegerField), `cvu`, `alias`
-- **Managers:** `AccountManager` — `create_user`, `create_superuser`
-- **Backends:** `EmailOrUsernameModelBackend` — login con email o username
-- **Properties:** `balance_dollars` (getter/setter), `balance_audit` (suma transfers)
-- **Views:** `log_in`, `register`, `log_out`, `settings` (secciones: general, privacy, account, theme, bank_accounts)
-- **URLs:** `/account/login/`, `/register/`, `/logout/`, `/settings/`
+### `account`
 
-### 2.2 App: `banking` — Movimientos de Dinero
-- **Modelo:** `Transfer` — `exchange_id` (ShortUUID "TRN..."), `type` (TRANSFER/DEPOSIT/WITHDRAW), `status` (pending/completed/failed), `sender`, `receiver`, `amount` (BigIntegerField, cents), `date`, `description`
-- **Manager:** `TransferManager` — `process_external_deposit`, `process_external_withdrawal`, `create_transaction`
-- **Servicio:** `ExternalBankService` — stub que siempre retorna `True`
-- **Forms:** `TransferForm`, `WithdrawForm`
-- **Views:** `transfer`, `withdraw`, `invest`, `deposit`
-- **URLs:** `/transfer/`, `/withdraw/`, `/deposit/`, `/invest/`
+- `Account`: username, email, CVU, alias, perfil, flags Django y `balance_cents`.
+- `USERNAME_FIELD = "username"`; `AccountManager` crea usuarios/superusuarios.
+- `EmailOrUsernameModelBackend` existe, pero `settings.py` no declara `AUTHENTICATION_BACKENDS`; no afirmar que el login por email está activo sin verificar/configurar.
+- `AccountAuthenticationForm` existe, pero la view de login usa actualmente `AuthenticationForm`.
+- `balance_dollars` y `balance_audit` son compatibilidad existente; la fuente financiera autoritativa es `balance_cents`.
+- Rutas: `/account/login/`, `/account/register/`, `/account/logout/`, `/account/settings/`.
 
-### 2.3 App: `creature` — Pokémon y Juego
-#### Modelos (441 líneas):
-- **`Creature`** — `id` (UUID), `name`, `description`, `type` (PrimaryType: 18 tipos), `secondary_type`, `current_price` (Decimal 12,2), `previous_close`, 6 stats (hp/attack/defense/sp_atk/sp_def/speed, PositiveIntegerField), `abilities` (M2M→Ability), `evolves_from`, `is_legendary`, `is_mythical`, `circuit_breaker_expires_at`, `battle_cooldown`, `cooldown_expires_at`, `currently_in_battle`, `small_icon`, `large_icon`
-- **`Ability`** — `name`, `ability_type` (PrimaryType), `power`, `accuracy`, `pp`, `priority`, `damage_class` (physical/special/status), `target`, healing, status effects
-- **`Battle`** — `status` (pending/active/finished), `current_turn`, `winner`, `battle_log` (JSON)
-- **`BattleParticipant`** — `current_hp`, `attack_stage`, `defense_stage`, `status_ailment`
-- **`BattleAction`** — `turn_number`, `actor`, `target`, `ability`, `damage_dealt`
-- **`EggTemplate`** — `price` (Decimal), `hatch_duration` (DurationField), `creature_pool` (M2M→Creature)
-- **`Incubation`** — `status` (INCUBATING/HATCHED), `hatches_at`, `hatched_creature`, `celery_task_id`
-- **Signal:** `limit_creature_abilities` — max 4 abilities por criatura
+### `banking`
 
-#### Views (115 líneas):
-- `incubation_shop_view` — lista eggs + incubaciones activas
-- `purchase_egg_view` — POST, compra egg, maneja errores de Celery/Redis
-- `incubation_status_view` — todas las incubaciones del usuario
-- `train_creature_view` — POST, inicia entrenamiento, captura ConnectionError para Redis
+- `Transfer` guarda monto entero en centavos y estados pending/completed/failed.
+- Tipos: transferencia interna, depósito externo y retiro externo.
+- `TransferManager` contiene `create_transaction`, `process_external_deposit` y `process_external_withdrawal`.
+- `ExternalBankService` es un stub/borde externo y debe mockearse en tests.
+- `create_transaction` valida el saldo antes del lock y no lo revalida después; tratarlo como riesgo de concurrencia, no como garantía de doble gasto resuelta.
+- Rutas: `/transfer/`, `/withdraw/`, `/deposit/`, `/invest/`.
 
-#### Services (140 líneas):
-- `IncubationService.purchase_egg()` — descuenta balance con `select_for_update`, agenda `hatch_egg` con ETA
-- `IncubationService.hatch_egg()` — selecciona criatura random del pool, crea Portfolio entry
-- `TrainingService.get_training_cost()` — 10% del precio de mercado
-- `TrainingService.train_creature()` — descuenta balance, agenda `complete_training` con countdown=30s
+### `creature`
 
-#### Tasks (127 líneas, Celery shared_task):
-- `matchmake_random_battle` — cada 5 min, 2 criaturas random
-- `process_battle_turn` — recursivo cada 10s, cálculo daño = (power * attack) / defense
-- `hatch_egg` — ejecuta `IncubationService.hatch_egg`
-- `complete_training` — boost random stat (+1~5), recalcula precio via PricingEngine
+Modelos:
 
-#### URLs:
-- `/incubation/`, `/incubation/purchase/<uuid:egg_id>/`, `/incubation/status/`, `/training/<uuid:portfolio_id>/`
+- `Creature`: UUID, tipos, precio, stats, hasta cuatro habilidades, evolución, rareza, imágenes, circuit breaker, cooldown, estado de batalla, ELO interno, victorias y derrotas.
+- `Ability`: tipo, power/accuracy/PP/priority, damage class, target y atributos de estado/healing.
+- `Battle`: estado, turno, winner, snapshots ELO, cambios potenciales y `next_turn_at`.
+- `BattleParticipant`: HP/estado y snapshots de precio pre/post batalla.
+- `BattleAction`: acción persistida por turno.
+- `BattleInvestment`: cantidad de inversores/holdings observados por batalla y turno.
+- `EggTemplate` e `Incubation`: catálogo, compra, ETA, resultado y task id.
 
-### 2.4 App: `trading` — Mercado, Portfolio, Órdenes
-#### Modelos (356 líneas):
-- **`Portfolio`** — `owner`→Account, `creature`→Creature, `quantity` (Decimal 18,8), `average_cost` (Decimal 12,2). Properties: `current_value`, `cost_basis`, `unrealized_pnl`, `unrealized_pnl_pct`
-- **`Order`** — `order_type` (BUY/SELL), `execution_type` (MARKET/LIMIT), `quantity`, `limit_price`, `filled_quantity`, `status` (OPEN/FILLED/PARTIALLY_FILLED/CANCELLED). Property: `remaining_quantity`
-- **`Trade`** — `buyer`→Account, `seller`→Account (nullable = Market Maker), `creature`, `quantity`, `price_per_unit`, `commission` (1.5%), `executed_at`. Property: `total_amount`
-- **`PriceHistory`** — OHLCV data, `interval` (1H/1D/1W), `timestamp`
-- **`MarketIndex`** — índice por tipo, `value`, `previous_value`, `change_pct`
-- **`Notification`** — `type` (VOLATILITY/BATTLE/INCUBATION/TRAINING/SYSTEM), `is_read`
+Servicios:
 
-#### Views (536 líneas):
-- `market_view` — lista criaturas con precios y cambios
-- `creature_detail_view` — detalle + gráfico + formularios compra/venta
-- `place_order_view` — POST, ejecuta market/limit orders
-- `portfolio_view` — holdings, P&L, distribución, income/expenses
-- `order_history_view` — historial con filtro por status
-- `cancel_order_view` — cancela limit order
-- `price_history_api` — JSON OHLCV para Chart.js
-- `market_indices_view` / `market_indices_api`
-- `notifications_view` / `notifications_api`
-- `portfolio_summary_api` — JSON para auto-refresh (balance, portfolio, IE data)
-- `_compute_income_expenses(user, period)` — función privada que agrupa trades+transfers por mes/año, retorna income_data/expenses_data/net_data con breakdown por sales/deposits/transfers_in/purchases/withdrawals/transfers_out/commissions
+- `IncubationService`: compra atómica y hatch que acredita un `Portfolio`.
+- `BattleService`: matchmaking/lifecycle, ELO, cambios de precio, historial, leaderboard, notificaciones e inversiones por turno.
+- `TrainingService`: costo del 10 %, débito y scheduling del boost.
 
-#### Services (726 líneas):
-- `PricingEngine` — precio = base × (1 + Δ_batallas + Δ_mercado) × rarity_mult
-  - `calculate_battle_delta()` — win rate últimos 20 battles, ±10%
-  - `calculate_market_delta()` — buy/sell volume ratio 24h, ±5%
-  - `get_rarity_multiplier()` — normal 1.0, legendary 1.5, mythical 2.0
-  - `update_creature_price()` — guarda y chequea volatilidad
-  - `record_price_snapshot()` — OHLCV por intervalo
-- `TradingEngine` — motor de ejecución:
-  - `execute_market_buy/sell()` — débito/crédito con `select_for_update`, actualiza Portfolio
-  - `place_limit_order()` — reserva fondos para BUY, verifica holdings para SELL
-  - `check_limit_orders()` — ejecuta órdenes cuando precio cruza umbral
-  - `_execute_limit_buy/sell()` — ejecución atómica
-  - `cancel_order()` — libera fondos reservados
-- `MarketIndicesService` — calcula índices ponderados por precio
-- `VolatilityService` — circuit breaker si precio cambia >10%
+Celery:
 
-#### Tasks (85 líneas):
-- `update_creature_prices` — cada 1 minuto, recalcula todos los precios
-- `check_pending_limit_orders` — cada 30s
-- `record_hourly/daily_price_snapshots` — OHLCV
-- `calculate_market_indices` — diario
-- `update_price_after_battle` — on-demand
+- `matchmake_random_battle` corre cada 5 minutos.
+- `process_battle_turn` encadena turnos según `BATTLE_TURN_INTERVAL` (180 s por defecto).
+- `hatch_egg` y `complete_training` procesan trabajos diferidos.
+- Las views cubren tienda/estado de incubación, entrenamiento, lista/detalle/historial de batallas.
 
-#### URLs:
-- `/trading/market/`, `/trading/portfolio/`, `/trading/orders/`
-- `/trading/creature/<uuid:creature_id>/`, `/trading/order/place/`, `/trading/order/<uuid:order_id>/cancel/`
-- `/trading/indices/`, `/trading/notifications/`
-- `/trading/api/price-history/<uuid:creature_id>/`, `/trading/api/indices/`, `/trading/api/notifications/`, `/trading/api/portfolio-summary/`
+Rutas: `/incubation/`, `/incubation/status/`, `/training/<uuid>/`, `/battles/`, `/battles/<id>/` y `/battles/creature/<uuid>/`.
 
-#### Template Tags (`templatetags/trading_tags.py`):
-- `type_color(type_name)` — color hex del tipo Pokémon
-- `type_bg(type_name)` — fondo semi-transparente
+### `trading`
 
-### 2.5 App: `dashboard` — Panel Principal
-- **View:** `dashboard()` — portfolio summary, type distribution, income/expenses, transaction history
-- **Template:** `dashboard/dashboard.html` — balance, investment chart (pie), transaction list, Income & Expenses card
-- **URL:** `/dashboard/`
+Modelos:
 
-### 2.6 App: `brokerdex` — Configuración Central
-- **settings.py:** Celery broker en Redis, Celery Beat schedule con 6 tareas periódicas
-- **celery.py:** `app = Celery('brokerdex')`, `app.autodiscover_tasks()`
-- **urls.py:** Raíz: `sw.js`, include de banking/account/dashboard/creature/trading, `admin/`
-- **views.py:** `index()` (redirect a dashboard si autenticado), `sw_js()` (service worker no-op)
+- `Portfolio`: único por owner+creature; quantity `Decimal(18,8)`, average cost `Decimal(12,2)` y P&L derivado.
+- `Order`: BUY/SELL, MARKET/LIMIT, filled quantity y estados OPEN/FILLED/PARTIALLY_FILLED/CANCELLED.
+- `Trade`: registro de ejecución con comisión histórica; `seller=NULL` en compras y `buyer=NULL` en ventas representan al Market Maker.
+- `PriceHistory`: OHLCV 1H/1D/1W.
+- `MarketIndex`: índice por tipo, volumen y variación.
+- `Notification`: enumera volatilidad, batalla, incubación, entrenamiento y sistema; hoy los productores activos crean principalmente alertas de volatilidad y resultados de batalla.
 
----
+Servicios:
 
-## 3. Sistema de Templates
+- `PricingEngine`: rareza + rendimiento de últimas batallas + presión buy/sell 24 h; persiste snapshots y delega control de volatilidad.
+- `TradingEngine`: market buy/sell, reserva de fondos BUY limit, ejecución/cancelación de limit orders y actualización de portfolio.
+- `MarketIndicesService`: hoy calcula promedio simple de precios por tipo y registra el volumen por separado, aunque sus docstrings declaran ponderación por volumen.
+- `VolatilityService`: corte por cambio mayor a 10 %, halt de 15 minutos y notificaciones a holders.
 
-### Layout base: `templates/layout.html`
-- Tema oscuro por defecto con CSS variables globales (data-theme="dark"/"light")
-- Variables: `--bg-primary`, `--bg-secondary`, `--bg-card`, `--border-color`, `--text-primary`, `--text-secondary`, `--accent-green/red/blue/purple`
-- Navbar con links a Dashboard/Market/Portfolio/Orders/Indices/Alerts + botón tema + dropdown Profile
-- Footer, back-to-top, theme toggle JS (localStorage "brokerdex-theme")
-- Bootstrap 5.3 CSS/JS, Boxicons, Bootstrap Icons (todos CDN)
-- Bloques: `{% block content %}`, `{% block extra_js %}`
-- Overrides de `.table`, `.btn-outline-*`, `.dropdown-menu` para tema oscuro
+Tasks periódicas:
 
-### Templates por ruta (20 templates de proyecto):
+- precios cada minuto;
+- limit orders cada 30 segundos;
+- snapshots horarios y diarios;
+- índices diarios;
+- actualización puntual post-batalla.
 
-| Template | Propósito |
-|----------|-----------|
-| `templates/index.html` | Landing page (público) |
-| `templates/home.html` | Home page (público) |
-| `account/templates/account/login.html` | Login |
-| `account/templates/account/register.html` | Registro |
-| `account/templates/account/settings.html` | Settings con tabs (general, privacy, account, theme, bank_accounts) |
-| `dashboard/templates/dashboard/dashboard.html` | Dashboard principal |
-| `banking/templates/transfer.html` | Transferencia entre usuarios |
-| `banking/templates/withdraw.html` | Retiro externo |
-| `banking/templates/deposit.html` | Depósito externo |
-| `banking/templates/invest.html` | Invertir (listado completo) |
-| `trading/templates/trading/market.html` | Market (tabla criaturas con búsqueda) |
-| `trading/templates/trading/creature_detail.html` | Detalle criatura (gráfico, stats, buy/sell, limit order) |
-| `trading/templates/trading/portfolio.html` | Portfolio (holdings, detail panel toggle, donut chart, income/expenses con gráfico mensual/anual, balance auto-refresh) |
-| `trading/templates/trading/orders.html` | Historial de órdenes |
-| `trading/templates/trading/market_indices.html` | Índices por tipo |
-| `trading/templates/trading/notifications.html` | Alertas del usuario |
-| `creature/templates/creature/incubation_shop.html` | Tienda de eggs |
-| `creature/templates/creature/incubation_status.html` | Estado de incubaciones |
+Views:
 
-### Patrones JS comunes:
-- Chart.js para gráficos (line/doughnut/pie/bar, siempre desde CDN)
-- fetch() para APIs de price-history y portfolio-summary
-- Auto-refresh cada 15s en portfolio (balance + summary cards + IE chart)
+- mercado/detalle, colocación/cancelación de órdenes, portfolio y órdenes;
+- índices y notificaciones;
+- APIs JSON de price history, índices, notificaciones y portfolio summary;
+- `_compute_income_expenses()` alimenta portfolio y dashboard.
 
----
+Rutas bajo `/trading/`: `market/`, `creature/<uuid>/`, `order/place/`, `order/<uuid>/cancel/`, `portfolio/`, `orders/`, `indices/`, `notifications/` y `api/...`.
 
-## 4. Reglas de Desarrollo (Innegociables)
+### `dashboard` y UI
 
-### Precisión Financiera
-- **PROHIBIDO** `FloatField` o `float` para precios/balances/cantidades
-- **OBLIGATORIO:** `DecimalField` (Django) + `decimal.Decimal` (Python)
-- Dinero/precios: `max_digits=12, decimal_places=2`
-- Fracciones de activos: `max_digits=18, decimal_places=8`
-- Balance: `BigIntegerField` en cents (`balance_cents`)
+- `dashboard.views.dashboard` agrega transacciones, portfolio, P&L, distribución e income/expenses.
+- Depende actualmente de `trading.views._compute_income_expenses`; cambiar ese contrato afecta ambas apps.
+- `templates/layout.html` define tema dark/light, navegación, CSS variables, footer y scripts CDN.
+- Hay 23 templates, incluidas páginas de batallas y el partial `creature/includes/battle_card.html`.
+- Chart.js consume JSON y el portfolio refresca su resumen por polling.
+- No existe pipeline local de assets estáticos; no introducir uno en un cambio no relacionado.
 
-### Concurrencia
-- `transaction.atomic()` + `.select_for_update()` para:
-  - Modificar balances (Account)
-  - Ejecutar trades (Order + Portfolio)
-  - Comprar eggs / entrenar
-- Siempre re-fetch el objeto dentro del bloque atómico
+## 3. Flujos críticos
 
-### Idempotencia Celery
-- Tareas de battles, incubation, training deben ser idempotentes
-- Usar `task_id` o hash del evento para dedup
-- No duplicar rewards ni aplicar racha de victorias dos veces
+### Compra market
 
-### Arquitectura de Capas
-- **Views:** validación de entrada (forms/serializers), HTTP status, redirección
-- **Services:** toda la lógica de negocio pesada
-- **Tasks:** solo llaman a services
+`place_order_view` → `TradingEngine.execute_market_buy` → lock de account → débito subtotal+1.5 % → upsert/average de portfolio → `Order` + `Trade`.
 
-### API y Gráficos
-- Endpoints de series temporales: `[{time: "ISO_TIMESTAMP", price: "250.50"}]`
-- Alertas de volatilidad (>10%) → `Notification` en DB
+### Venta market
 
----
+`place_order_view` → `execute_market_sell` → locks → validación de holdings → crédito subtotal-comisión → reducción/eliminación de portfolio → `Order` + `Trade`.
 
-## 5. Flujo de Datos Clave
+### Orden limit
 
-### Compra Market:
-`POST /trading/order/place/` → `TradingEngine.execute_market_buy()` → descuenta balance (cents) + commission 1.5% → crea Portfolio/update weighted avg → registra Trade y Order → redirect a creature_detail
+- BUY reserva al colocar precio×cantidad+comisión estimada.
+- Celery Beat evalúa cruces de precio y ejecuta bajo lock.
+- Cancelar libera fondos BUY pendientes.
+- Cambiar reservas o matching exige tests de doble ejecución, cancelación y concurrencia.
 
-### Venta Market:
-Análogo pero acredita balance neto (subtotal - commission) y reduce/delega Portfolio
+### Transferencias
 
-### Entrenamiento:
-POST `/training/<portfolio_id>/` → `TrainingService.train_creature()` → descuenta 10% price → agenda Celery task 30s → `complete_training` boostea stat random (+1~5) y recalcula precio
+Managers de `Transfer` validan, abren transacción, bloquean cuentas, actualizan centavos y persisten estado. El banco externo es un borde sustituible, no lógica de dominio.
 
-### Incubación:
-POST `/incubation/purchase/<egg_id>/` → `IncubationService.purchase_egg()` → descuenta egg.price → agenda Celery con ETA → `hatch_egg` crea Portfolio entry con criatura random del pool
+### Incubación y entrenamiento
 
-### Income & Expenses:
-`_compute_income_expenses(user, period)` agrupa por mes/año:
-- Income: sell proceeds (Trade.seller) + DEPOSIT (Transfer) + TRANSFER received
-- Expenses: buy cost (Trade.buyer) + WITHDRAW (Transfer) + TRANSFER sent + commissions (all trades)
-- Ambos lados se consumen en portfolio y dashboard via `portfolio_summary_api`
+- La operación HTTP llama al servicio.
+- El servicio cobra atómicamente y agenda Celery.
+- La task aplica el efecto diferido.
+- Riesgo actual: el scheduling ocurre después del bloque de débito; un fallo de Redis puede dejar un cobro sin ejecución. Cualquier cambio debe cubrir compensación e idempotencia con tests.
 
----
+### Batallas
 
-## 6. Configuración Local
+Beat elige dos criaturas disponibles, `BattleService` crea snapshots y la task encadena turnos. Al finalizar se actualizan ELO/stats/precios y notificaciones. ELO nunca forma parte de contratos públicos.
+
+## 4. Invariantes que no se negocian
+
+### Precisión financiera
+
+- Saldo persistido: `BigIntegerField` en centavos.
+- Precios/dinero: `DecimalField(max_digits=12, decimal_places=2)` y `Decimal`.
+- Fracciones: `DecimalField(max_digits=18, decimal_places=8)`.
+- No usar `FloatField` ni `float` en persistencia o cálculo financiero.
+- Convertir a número de presentación solo en el último borde si el contrato JSON existente lo requiere.
+- Construir `Decimal` desde strings y cuantizar redondeos monetarios explícitamente.
+
+### Atomicidad y concurrencia
+
+- Toda mutación de saldo, orden, portfolio, incubación o entrenamiento usa `transaction.atomic()`.
+- Reconsultar dentro del bloque con `select_for_update()`; no confiar en instancias cargadas antes.
+- Adquirir locks en orden estable y mantener el bloque pequeño.
+- Una excepción debe revertir el conjunto completo de cambios.
+- Concurrencia real se prueba con PostgreSQL y `TransactionTestCase`, no SQLite.
+
+### Asincronía
+
+- Tasks finas: cargar/adaptar y delegar a servicios.
+- Services deben ser ejecutables sin worker para poder probarlos.
+- Reintentos requieren idempotencia persistente; no alcanza con capturar excepciones.
+- Nunca duplicar hatch, boost, resultado de batalla, notificación o ejecución de orden.
+- Solo una instancia de Celery Beat por entorno.
+
+### Capas y contratos
+
+- Forms/serializers validan shape de entrada.
+- Views gestionan auth, HTTP, mensajes, status, redirects y contexto.
+- Services coordinan negocio y transacciones.
+- Models/managers expresan invariantes persistentes y consultas de dominio.
+- Tasks y commands orquestan, no duplican negocio.
+- Preservar nombres de URL, keys JSON y variables de template salvo cambio explícito.
+- Mantener `Trade` y snapshots como hechos históricos; no recalcularlos con reglas nuevas.
+
+### Datos y esquema
+
+- No editar ni borrar migraciones compartidas; agregar migraciones nuevas.
+- No modificar `seed_data` ni ejecutar `seed_all --clear` salvo que el objetivo lo requiera.
+- No cambiar `AUTH_USER_MODEL`, unidades financieras, UUIDs o relaciones históricas como limpieza lateral.
+- No exponer credenciales, ELO ni información interna en templates/API/logs.
+
+## 5. Áreas de alto riesgo / no tocar lateralmente
+
+- `TradingEngine`, `TransferManager`, `IncubationService` y `TrainingService`: dinero y locks.
+- `BattleService.process_battle_result` y cadena `process_battle_turn`: efectos repetibles y pricing.
+- `PricingEngine`/`VolatilityService`: compounding, circuit breaker y alertas.
+- Estados y vínculos de `Order`, `Trade`, `Portfolio`, `Battle` e `Incubation`.
+- Migraciones existentes, datos seed y contratos de templates/Chart.js.
+- Nombres `web`, `worker`, `beat` del `Procfile`.
+- `brokerdex/celery.py` es la app canónica; `creature/celery.py` es un duplicado legado y no debe convertirse en un segundo runtime.
+
+Si una tarea exige tocar estas áreas, primero crear un test de caracterización/regresión.
+
+## 6. Deuda conocida: verificar, no perpetuar
+
+- Settings están hardcodeados y orientados a desarrollo.
+- `Procfile` usa Django `runserver`; no es un despliegue web de producción.
+- `run.sh` solo inicia Redis en Docker y `runserver`; no levanta worker ni beat.
+- `brokerdex/.my_pgpass` está trackeado: tratarlo como material sensible y no mostrar/copiar su contenido.
+- Backend email/username existe pero no está registrado en settings.
+- `pyproject.toml` apunta mypy-django a `myproject.settings`, nombre ajeno al proyecto.
+- Persisten conversiones a `float` en propiedades/views de presentación y algunos tests crean precios desde literales float.
+- La idempotencia está declarada como requisito, pero no todos los efectos Celery tienen una clave/estado de deduplicación robusto.
+- Algunas reglas de negocio viven todavía en models/tasks o se comparten mediante funciones privadas de views.
+- `PARTIALLY_FILLED` existe en el modelo, pero el motor actual no produce fills parciales.
+- `CreatureSerializer` no tiene rutas DRF y referencia campos inexistentes (`symbol`, `original_image_url`).
+- `seed_market` duplica parcialmente al seeder canónico `seed_all`.
+- `WithdrawForm` referencia `Account.balance`, atributo inexistente; las views bancarias carecen de cobertura HTTP.
+- `generate_random_battle` está obsoleto: importa símbolos inexistentes y referencia atributos no definidos.
+- `makemigrations --check --dry-run` detecta una migración pendiente para `BattleParticipant.Meta.ordering` (`0007_alter_battleparticipant_options`).
+- Los tests de integración de `seed_all` escriben sprites en `MEDIA_ROOT`; hoy pueden dejar archivos no trackeados y deben aislarse/limpiarse.
+
+No corregir esta deuda fuera de alcance. Si bloquea una implementación, cubrir primero el comportamiento y corregir el mínimo necesario.
+
+## 7. Refactor obligatorio
+
+Después de hacer verde una implementación:
+
+1. aplicar `.cursor/skills/semantic-compression/SKILL.md`;
+2. aplicar `.cursor/skills/continuous-granularity/SKILL.md`;
+3. conservar acceso a primitivas ORM/transaccionales;
+4. evitar repositorios genéricos, jerarquías prematuras, DTOs duplicados, signals ocultos y god services;
+5. volver a ejecutar tests.
+
+Las abstracciones nacen de dos o más casos reales. Código más corto que oculta locks, unidades o efectos asíncronos es una regresión.
+
+## 8. Testing y operación
+
+La suite usa Django `TestCase` y archivos `tests.py`/`tests_integration.py`. Celery se parchea en el punto de uso; el flujo normal de tests no necesita Redis vivo.
+
+Cobertura fuerte: trading market, pricing, modelos, incubación y batallas. Prioridades pendientes: ejecución periódica de limit orders, tasks de Beat, concurrencia real, dashboard, auth, views bancarias, income/expenses y `portfolio_summary_api`.
 
 ```bash
-# Redis
-redis-server
-
-# Celery worker
-celery -A brokerdex worker --loglevel=info
-
-# Celery beat
-celery -A brokerdex beat --loglevel=info
-
-# Django dev server
-python manage.py runserver
-
-# Seed data
-python manage.py seed_all
-
-# Tests
-python manage.py test trading creature
+uv sync
+uv run python manage.py check
+uv run python manage.py test trading creature banking account dashboard
+uv run python manage.py makemigrations --check --dry-run
+uv run honcho start
 ```
 
-### Seed data:
-- `python manage.py seed_all` — carga criaturas desde `seed_data/pokemon_data.json`, crea usuarios demo, precios iniciales, órdenes demo
-- `python manage.py generate_random_battle` — inicia una battle entre 2 criaturas
-- `python manage.py add_funds` — agrega fondos a un usuario
+Seeding:
 
----
+```bash
+uv run python manage.py seed_all
+uv run python manage.py seed_all --demo
+uv run python manage.py add_funds <username> <amount_en_centavos>
+```
 
-## 7. Memoria Evolutiva del Proyecto (Auto-Generado)
-
-*No modifiques esta sección manualmente. Se actualiza automáticamente al final de cada sesión mediante el script de destilación.*
-
-- **Última actualización:** Inicializado. Listo para registrar patrones descubiertos y mitigar bucles de corrección repetida.
+Consultar `cursorrules.md` y `.cursor/skills/django-tdd/SKILL.md` para el ciclo completo, selección de tests y gestión de PostgreSQL/Redis/Procfile.

@@ -9,7 +9,7 @@
             <div class="card mb-4">
                 <div class="card-body text-center">
                     <h5 class="card-title">Current Balance</h5>
-                    <h2 class="text-primary">${{ user_balance }}</h2>
+                    <h2 class="text-primary">${{ user_balance|floatformat:2 }}</h2>
                 </div>
             </div>
             {% if messages %}
@@ -29,14 +29,15 @@
                     <h4 class="mb-0">Transfer Funds</h4>
                 </div>
                 <div class="card-body">
-                    <form method="POST">
+                    <form method="POST" id="amount-form">
                         {% csrf_token %}
                         <div class="mb-3">
                             <label for="receiver_username" class="form-label">Recipient Username</label>
                             <input type="text" 
                                    class="form-control" 
                                    id="receiver_username"
-                                   name="receiver_username" 
+                                   name="receiver_username"
+                                   value="{{ form.receiver_username.value|default:'' }}"
                                    required>
                         </div>
 
@@ -45,9 +46,11 @@
                             <input type="number" 
                                    class="form-control" 
                                    id="amount"
-                                   name="amount" 
-                                   step="1"
-                                   min="1"
+                                   name="amount"
+                                   value="{{ form.amount.value|default:'' }}"
+                                   step="0.01"
+                                   min="0.01"
+                                   max="{{ user_balance }}"
                                    required>
                         </div>
 

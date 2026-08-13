@@ -6,18 +6,25 @@ from django.core.files.storage import Storage
 
 ROOT_DIR = os.path.join(settings.BASE_DIR, 'creature/images/')
 
+
 class ImagesStorage(Storage):
     def __init__(self, option=None):
         if not option:
-            option = settings.CUSTOM_STORAGE_OPTIONS
+            option = getattr(settings, 'CUSTOM_STORAGE_OPTIONS', None)
+        self.option = option
+
     def _open(self, name, mode='rb'):
         file = os.path.join(ROOT_DIR, name)
         if exists(file):
-            return File(open(file, 'r'))
+            return File(open(file, mode))
+
     def _save(self, name, content):
         file = os.path.join(ROOT_DIR, name)
         if exists(file):
-            with open(file, "w") as f:
-                f.write(content) 
+            with open(file, "wb") as destination:
+                for chunk in content.chunks():
+                    destination.write(chunk)
             return name
-    def path():
+
+    def path(self, name):
+        return os.path.join(ROOT_DIR, name)

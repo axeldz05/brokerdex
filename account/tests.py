@@ -1,7 +1,18 @@
-from django.db import IntegrityError
-from django.test import TestCase
+from decimal import Decimal
 
+from django.db import IntegrityError
+from django.test import SimpleTestCase, TestCase
+
+from .money import cents_to_dollars, dollars_to_cents, quantize_money
 from .models import Account
+
+
+class MoneyConversionTests(SimpleTestCase):
+    def test_money_conversions_share_explicit_half_up_rounding(self):
+        self.assertEqual(quantize_money('0.015'), Decimal('0.02'))
+        self.assertEqual(dollars_to_cents('12.345'), 1235)
+        self.assertEqual(cents_to_dollars(1235), Decimal('12.35'))
+
 
 class AccountIdentifierTests(TestCase):
     def test_account_has_cvu_and_alias(self):

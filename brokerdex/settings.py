@@ -165,6 +165,14 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'creature.tasks.matchmake_random_battle',
         'schedule': crontab(minute='*/5'),
     },
+    'recuperar-operaciones-creature-cada-minuto': {
+        'task': 'creature.tasks.recover_creature_operations',
+        'schedule': crontab(minute='*/1'),
+    },
+    'recuperar-retiros-pendientes-cada-minuto': {
+        'task': 'banking.tasks.recover_pending_withdrawals',
+        'schedule': crontab(minute='*/1'),
+    },
     'actualizar-precios-cada-minuto': {
         'task': 'trading.tasks.update_creature_prices',
         'schedule': crontab(minute='*/1'),
