@@ -10,17 +10,18 @@ dependencies = [
     "django>=5.2.6",
     "django-better-admin-arrayfield>=1.4.2",
     "django-crispy-forms>=2.4",
-    "django-filter>=25.2",
+    "django-environ>=0.14.0",
     "django-stubs[compatible-mypy]>=5.2.8",
-    "djangorestframework>=3.16.1",
     "flake8>=7.3.0",
+    "gunicorn>=26.0.0",
     "honcho>=2.0.0",
     "pillow>=11.3.0",
     "psycopg>=3.2.10",
     "redis>=7.2.1",
     "shortuuid>=1.0.13",
+    "whitenoise>=6.12.0",
 ]
 [tool.mypy]
 plugins = ["mypy_django_plugin.main"]
 [tool.django-stubs]
-django_settings_module = "myproject.settings"
+django_settings_module = "brokerdex.settings"

@@ -160,18 +160,18 @@
     <div class="orders-header">
         <div class="container">
             <h1 class="mb-1">Order History</h1>
-            <div class="nav-links">
+            <nav class="nav-links" aria-label="Trading">
                 <a href="{% url 'trading:market' %}">Market</a>
                 <a href="{% url 'trading:portfolio' %}">Portfolio</a>
                 <a href="{% url 'trading:orders' %}" class="active">Orders</a>
                 <a href="{% url 'dashboard:dashboard' %}">Dashboard</a>
-            </div>
+            </nav>
         </div>
     </div>
 
     <div class="container py-4">
         <!-- Filters -->
-        <div class="filter-tabs">
+        <nav class="filter-tabs" aria-label="Filter orders by status">
             <a href="{% url 'trading:orders' %}"
                class="filter-tab {% if not current_filter %}active{% endif %}">All</a>
             {% for value, label in status_choices %}
@@ -180,24 +180,27 @@
                 {{ label }}
             </a>
             {% endfor %}
-        </div>
+        </nav>
 
         <!-- Orders Table -->
         <div class="card-dark">
             {% if orders %}
             <div class="table-responsive">
                 <table class="orders-table">
+                    <caption class="visually-hidden">
+                        Order history and current status
+                    </caption>
                     <thead>
                         <tr>
-                            <th>Date</th>
-                            <th>Creature</th>
-                            <th>Side</th>
-                            <th>Type</th>
-                            <th class="text-end">Qty</th>
-                            <th class="text-end hide-mobile">Filled</th>
-                            <th class="text-end hide-mobile">Limit Price</th>
-                            <th>Status</th>
-                            <th></th>
+                            <th scope="col">Date</th>
+                            <th scope="col">Creature</th>
+                            <th scope="col">Side</th>
+                            <th scope="col">Type</th>
+                            <th scope="col" class="text-end">Qty</th>
+                            <th scope="col" class="text-end hide-mobile">Filled</th>
+                            <th scope="col" class="text-end hide-mobile">Limit Price</th>
+                            <th scope="col">Status</th>
+                            <th scope="col"><span class="visually-hidden">Actions</span></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -233,7 +236,11 @@
                                 {% if order.status == 'OPEN' or order.status == 'PARTIALLY_FILLED' %}
                                 <form method="POST" action="{% url 'trading:cancel_order' order_id=order.pk %}" style="display:inline;">
                                     {% csrf_token %}
-                                    <button type="submit" class="btn-cancel">Cancel</button>
+                                    <button type="submit"
+                                            class="btn-cancel"
+                                            aria-label="Cancel {{ order.get_order_type_display }} order for {{ order.creature.name }}">
+                                        Cancel
+                                    </button>
                                 </form>
                                 {% endif %}
                             </td>

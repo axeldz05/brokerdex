@@ -1,7 +1,15 @@
+import hashlib
+import hmac
+import json
+import logging
+
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
+from django.http import JsonResponse
 from django.shortcuts import redirect, render
+from django.views.decorators.csrf import csrf_exempt
 
 from account.money import cents_to_dollars, dollars_to_cents
 from account.models import Account
@@ -9,6 +17,10 @@ from creature.models import Creature
 
 from .forms import TransferForm, WithdrawForm
 from .models import Transfer
+from .services import DepositService
+
+
+logger = logging.getLogger(__name__)
 
 
 def _balance_context(account):
@@ -112,3 +124,68 @@ def invest(request):
 @login_required
 def deposit(request):
     return render(request, 'deposit.html', {})
+
+
+@csrf_exempt
+def deposit_webhook(request):
+    if request.method != "POST":
+        return JsonResponse(
+            {"status": "error", "code": "method_not_allowed"},
+            status=405,
+        )
+
+    secret = getattr(settings, "DEPOSIT_WEBHOOK_SECRET", "")
+    provided_signature = request.headers.get("X-Webhook-Signature", "")
+    if provided_signature.startswith("sha256="):
+        provided_signature = provided_signature.removeprefix("sha256=")
+    expected_signature = hmac.new(
+        str(secret).encode(),
+        request.body,
+        hashlib.sha256,
+    ).hexdigest()
+    if (
+        not secret
+        or not provided_signature
+        or not hmac.compare_digest(provided_signature, expected_signature)
+    ):
+        return JsonResponse(
+            {"status": "error", "code": "invalid_signature"},
+            status=401,
+        )
+
+    try:
+        payload = json.loads(request.body)
+        if not isinstance(payload, dict):
+            raise ValueError
+        if payload.get("status") != "COMPLETED":
+            raise ValueError
+        DepositService.credit_completed(
+            provider_reference=payload.get("provider_reference"),
+            target_identifier=payload.get("target_identifier"),
+            identifier_type=payload.get("identifier_type"),
+            amount_cents=payload.get("amount_cents"),
+        )
+    except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+        return JsonResponse(
+            {"status": "error", "code": "invalid_payload"},
+            status=400,
+        )
+    except ValidationError as error:
+        code = error.error_list[0].code
+        if code == "account_not_found":
+            return JsonResponse(
+                {"status": "error", "code": code},
+                status=404,
+            )
+        return JsonResponse(
+            {"status": "error", "code": "invalid_payload"},
+            status=400,
+        )
+    except Exception:
+        logger.exception("Deposit webhook processing failed.")
+        return JsonResponse(
+            {"status": "error", "code": "internal_error"},
+            status=500,
+        )
+
+    return JsonResponse({"status": "ok"})

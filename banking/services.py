@@ -1,10 +1,141 @@
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.utils import timezone
 
 from account.models import Account
+
+
+class DepositService:
+    """Credit completed deposits exactly once per provider reference."""
+
+    IDENTIFIER_FIELDS = {
+        "CVU": "cvu",
+        "ALIAS": "alias",
+    }
+
+    @classmethod
+    def credit_completed(
+        cls,
+        provider_reference,
+        target_identifier,
+        amount_cents,
+        identifier_type="CVU",
+    ):
+        from .models import Transfer
+
+        cls._validate_input(
+            provider_reference=provider_reference,
+            target_identifier=target_identifier,
+            identifier_type=identifier_type,
+            amount_cents=amount_cents,
+        )
+
+        try:
+            with transaction.atomic():
+                existing = cls._find_existing(
+                    provider_reference,
+                    for_update=True,
+                )
+                if existing:
+                    return existing
+
+                account_field = cls.IDENTIFIER_FIELDS[identifier_type]
+                try:
+                    receiver = Account.objects.select_for_update().get(
+                        **{account_field: target_identifier}
+                    )
+                except Account.DoesNotExist as error:
+                    raise ValidationError(
+                        "Receiver account not found",
+                        code="account_not_found",
+                    ) from error
+
+                existing = cls._find_existing(
+                    provider_reference,
+                    for_update=True,
+                )
+                if existing:
+                    return existing
+
+                transfer = Transfer.objects.create(
+                    sender=None,
+                    receiver=receiver,
+                    type=Transfer.TransactionType.DEPOSIT,
+                    status=Transfer.TransactionStatus.COMPLETED,
+                    amount=amount_cents,
+                    provider_reference=provider_reference,
+                    target_identifier=target_identifier,
+                    description=f"Deposit via {identifier_type}",
+                    processed_at=timezone.now(),
+                )
+                receiver.balance_cents += amount_cents
+                receiver.save(update_fields=["balance_cents"])
+                return transfer
+        except IntegrityError:
+            existing = cls._find_existing(
+                provider_reference,
+            )
+            if existing:
+                return existing
+            raise
+
+    @staticmethod
+    def _find_existing(
+        provider_reference,
+        for_update=False,
+    ):
+        from .models import Transfer
+
+        queryset = Transfer.objects.filter(
+            type=Transfer.TransactionType.DEPOSIT,
+            provider_reference=provider_reference,
+        )
+        if for_update:
+            queryset = queryset.select_for_update()
+        return queryset.first()
+
+    @classmethod
+    def _validate_input(
+        cls,
+        provider_reference,
+        target_identifier,
+        identifier_type,
+        amount_cents,
+    ):
+        if (
+            not isinstance(provider_reference, str)
+            or not provider_reference.strip()
+            or len(provider_reference) > 255
+        ):
+            raise ValidationError(
+                "Provider reference is required.",
+                code="invalid_payload",
+            )
+        if identifier_type not in cls.IDENTIFIER_FIELDS:
+            raise ValidationError(
+                "Type of identifier not supported.",
+                code="invalid_payload",
+            )
+        if (
+            not isinstance(target_identifier, str)
+            or not target_identifier.strip()
+            or len(target_identifier) > 100
+        ):
+            raise ValidationError(
+                "Target identifier is required.",
+                code="invalid_payload",
+            )
+        if (
+            not isinstance(amount_cents, int)
+            or isinstance(amount_cents, bool)
+            or amount_cents <= 0
+        ):
+            raise ValidationError(
+                "Amount must be higher than zero",
+                code="invalid_payload",
+            )
 
 
 class ExternalBankService:

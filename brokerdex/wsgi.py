@@ -1,5 +1,5 @@
 """
-WSGI config for bank project.
+WSGI config for Brokerdex.
 
 It exposes the WSGI callable as a module-level variable named ``application``.
 
@@ -11,6 +11,9 @@ import os
 
 from django.core.wsgi import get_wsgi_application
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'brokerdex.settings')
+os.environ.setdefault(
+    "DJANGO_SETTINGS_MODULE",
+    "brokerdex.settings.production",
+)
 
 application = get_wsgi_application()

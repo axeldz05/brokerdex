@@ -1,6 +1,21 @@
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render, redirect
 from django.views.decorators.cache import cache_control
+
+from .observability import readiness_status
+
+
+def health_live(request):
+    return JsonResponse({"status": "ok"})
+
+
+def health_ready(request):
+    status, checks = readiness_status()
+    status_code = 200 if status == "ok" else 503
+    return JsonResponse(
+        {"status": status, "checks": checks},
+        status=status_code,
+    )
 
 
 def index(request):

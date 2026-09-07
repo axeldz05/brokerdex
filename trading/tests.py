@@ -562,9 +562,12 @@ class PricingEngineTestCase(TestCase):
             Decimal('2.0')
         )
 
-    def test_battle_delta_no_battles_returns_zero(self):
-        delta = PricingEngine.calculate_battle_delta(self.creature)
-        self.assertEqual(delta, Decimal('0'))
+    def test_price_without_market_pressure_uses_reference_price(self):
+        self.creature.current_price = Decimal('150.00')
+
+        price = PricingEngine.calculate_price(self.creature)
+
+        self.assertEqual(price, Decimal('100.00'))
 
     def test_market_delta_no_trades_returns_zero(self):
         delta = PricingEngine.calculate_market_delta(self.creature)

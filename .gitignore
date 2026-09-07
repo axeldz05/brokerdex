@@ -2,3 +2,11 @@
 reset_migration.sh
 celerybeat*
 /media/creatures/*
+
+# Local environment and PostgreSQL credentials
+.env
+.env.*
+!.env.example
+.pgpass
+.my_pgpass
+.pg_service.conf

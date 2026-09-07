@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from shortuuid.django_fields import ShortUUIDField
@@ -9,36 +11,14 @@ from account.models import Account
 class TransferManager(models.Manager):
     def process_external_deposit(
             self, target_identifier, amount, identifier_type='CVU'):
-        if amount <= 0:
-            raise ValidationError("Amount must be higher than zero")
-        try:
-            if identifier_type == 'CVU':
-                receiver = Account.objects.get(cvu=target_identifier)
-            elif identifier_type == 'ALIAS':
-                receiver = Account.objects.get(alias=target_identifier)
-            else:
-                raise ValidationError("Type of identifier not supported")
-        except Account.DoesNotExist:
-            raise ValidationError("Receiver account not found")
+        from .services import DepositService
 
-        with transaction.atomic():
-            receiver = Account.objects.select_for_update().get(pk=receiver.pk)
-            transfer = self.create(
-                sender=None,
-                type=self.model.TransactionType.DEPOSIT,
-                receiver=receiver,
-                amount=amount,
-                status=Transfer.TransactionStatus.PENDING,
-                description=f"External Deposit via {identifier_type}"
-            )
-
-            receiver.balance_cents += amount
-            receiver.save(update_fields=['balance_cents'])
-
-            transfer.status = 'completed'
-            transfer.save(update_fields=['status'])
-
-            return transfer
+        return DepositService.credit_completed(
+            provider_reference=f"manual:{uuid4()}",
+            target_identifier=target_identifier,
+            identifier_type=identifier_type,
+            amount_cents=amount,
+        )
 
     def process_external_withdrawal(self, sender, target_cvu, amount):
         from .services import WithdrawalService
@@ -100,6 +80,11 @@ class Transfer(models.Model):
     description = models.CharField(max_length=1000, null=True, blank=True)
     source_identifier = models.CharField(max_length=100, blank=True)
     target_identifier = models.CharField(max_length=100, blank=True)
+    provider_reference = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+    )
     provider_attempts = models.PositiveIntegerField(default=0)
     provider_error = models.TextField(blank=True)
     processing_started_at = models.DateTimeField(null=True, blank=True)
@@ -123,6 +108,16 @@ class Transfer(models.Model):
     class Meta:
         indexes = [
             models.Index(fields=['type', 'status']),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['provider_reference'],
+                condition=models.Q(
+                    type='DEPOSIT',
+                    provider_reference__isnull=False,
+                ),
+                name='unique_deposit_provider_reference',
+            ),
         ]
 
     @property

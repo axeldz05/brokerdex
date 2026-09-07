@@ -1,7 +1,10 @@
 {% extends "layout.html" %}
+{% load static %}
+
+{% block title %}Invest in Creatures | Brokerdex{% endblock %}
+{% block meta_description %}Trade fractional creature assets, follow battles, and hatch new creatures on Brokerdex.{% endblock %}
 
 {% block content %}
-{% load static %}
 
 <!-- Hero Section -->
 <section class="hero-section">
@@ -18,7 +21,7 @@
             <div class="col-md-6 col-lg-4">
                 <div class="icon-box">
                     <div class="icon">
-                        <i class="bx bxl-dribbble"></i>
+                        <i class="bx bxl-dribbble" aria-hidden="true"></i>
                     </div>
                     <h4 class="title">Invest in pokemons</h4>
                     <p class="description">Buy or invest in pokemons to start earning when they win battles.</p>
@@ -27,7 +30,7 @@
             <div class="col-md-6 col-lg-4">
                 <div class="icon-box">
                     <div class="icon">
-                        <i class="bx bx-file"></i>
+                        <i class="bx bx-file" aria-hidden="true"></i>
                     </div>
                     <h4 class="title">Exchange</h4>
                     <p class="description">You can exchange pokemons between other players.</p>
@@ -36,7 +39,7 @@
             <div class="col-md-6 col-lg-4">
                 <div class="icon-box">
                     <div class="icon">
-                        <i class="bx bx-world"></i>
+                        <i class="bx bx-world" aria-hidden="true"></i>
                     </div>
                     <h4 class="title">Hatch new pokemons</h4>
                     <p class="description">Hatch new pokemons and put them in the market.</p>
@@ -55,15 +58,14 @@
         </div>
         <div class="row align-items-center">
             <div class="col-md-5">
-                {% load static %}
-                <img src="{% static 'banking/assets/img/pikachu-seeklogo.png' %}" class="img-fluid rounded" alt="Features Image">
+                <img src="{% static 'banking/assets/img/pikachu-seeklogo.png' %}" class="img-fluid rounded" alt="Pikachu representing creature investing">
             </div>
             <div class="col-md-7">
                 <h3>You have a Brokerdex with the pokemons you invested in</h3>
                 <p class="fst-italic">Each pokemon has their unique history in the simulated world</p>
                 <ul class="list-unstyled">
-                    <li class="mb-2"><i class="bi bi-check-circle-fill text-success me-2"></i>Pokemons may birth new pokemons into the market.</li>
-                    <li class="mb-2"><i class="bi bi-check-circle-fill text-success me-2"></i>If the pokemon is on a winning streak since your investment, you earn a bonus each time they win more!</li>
+                    <li class="mb-2"><i class="bi bi-check-circle-fill text-success me-2" aria-hidden="true"></i>Pokemons may birth new pokemons into the market.</li>
+                    <li class="mb-2"><i class="bi bi-check-circle-fill text-success me-2" aria-hidden="true"></i>If the pokemon is on a winning streak since your investment, you earn a bonus each time they win more!</li>
                 </ul>
             </div>
         </div>

@@ -6,5 +6,10 @@ urlpatterns = [
     path('transfer/', views.transfer, name='transfer'),
     path('withdraw/', views.withdraw, name='withdraw'),
     path('deposit/', views.deposit, name='deposit'),
+    path(
+        'webhooks/deposits/',
+        views.deposit_webhook,
+        name='deposit_webhook',
+    ),
     path('invest/', views.invest, name='invest')
 ]

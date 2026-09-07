@@ -562,6 +562,24 @@ class Incubation(models.Model):
         return f"{self.user.username} — {self.egg_template.name} [{self.status}]"
 
     @property
+    def progress_percent(self):
+        duration = (self.hatches_at - self.purchased_at).total_seconds()
+        if duration <= 0:
+            return 100
+
+        elapsed = (timezone.now() - self.purchased_at).total_seconds()
+        progress = int((elapsed / duration) * 100)
+        return max(0, min(progress, 100))
+
+    @property
+    def user_failure_reason(self):
+        if self.status != self.Status.FAILED:
+            return ''
+        return (
+            'This egg could not be hatched because of a processing problem.'
+        )
+
+    @property
     def time_remaining(self):
         if self.status != self.Status.INCUBATING:
             return 0
@@ -573,6 +591,7 @@ class TrainingSession(models.Model):
     class Status(models.TextChoices):
         PENDING = 'PENDING', 'Pending'
         COMPLETED = 'COMPLETED', 'Completed'
+        FAILED = 'FAILED', 'Failed and refunded'
 
     SchedulingStatus = DeferredSchedulingStatus
 
@@ -619,6 +638,9 @@ class TrainingSession(models.Model):
     result_boost = models.PositiveIntegerField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     completion_notified_at = models.DateTimeField(null=True, blank=True)
+    failed_at = models.DateTimeField(null=True, blank=True)
+    failure_reason = models.TextField(blank=True)
+    refunded_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

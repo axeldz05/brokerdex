@@ -14,7 +14,7 @@
                             {% if c1.small_icon_url %}
                                 <img src="{{ c1.small_icon_url }}" alt="{{ c1.name }}" class="img-fluid" style="max-height: 80px;">
                             {% else %}
-                                <i class='bx bx-help-circle' style="font-size: 3rem;"></i>
+                                <i class='bx bx-help-circle' style="font-size: 3rem;" aria-hidden="true"></i>
                             {% endif %}
                             <div class="mt-1"><strong>{{ c1.name }}</strong></div>
                             <span class="badge" style="background: {{ c1.type|type_bg }}; color: {{ c1.type|type_color }};">{{ c1.get_type_display }}</span>
@@ -24,7 +24,10 @@
                         <div class="vs-text" style="font-size: 2rem; font-weight: 900; color: var(--accent-red); text-shadow: 0 0 10px rgba(248,81,73,0.5);">VS</div>
                         {% if show_timer and battle.next_turn_at %}
                             <div class="small text-muted mt-1">Next:</div>
-                            <div class="battle-countdown small fw-bold" data-next-turn="{{ battle.next_turn_at|date:'c' }}">--</div>
+                            <div class="battle-countdown small fw-bold"
+                                 role="timer" aria-live="polite" aria-atomic="true"
+                                 aria-label="Time until next battle action"
+                                 data-next-turn="{{ battle.next_turn_at|date:'c' }}">--</div>
                         {% endif %}
                     </div>
                     <div class="col-5">
@@ -32,7 +35,7 @@
                             {% if c2.small_icon_url %}
                                 <img src="{{ c2.small_icon_url }}" alt="{{ c2.name }}" class="img-fluid" style="max-height: 80px;">
                             {% else %}
-                                <i class='bx bx-help-circle' style="font-size: 3rem;"></i>
+                                <i class='bx bx-help-circle' style="font-size: 3rem;" aria-hidden="true"></i>
                             {% endif %}
                             <div class="mt-1"><strong>{{ c2.name }}</strong></div>
                             <span class="badge" style="background: {{ c2.type|type_bg }}; color: {{ c2.type|type_color }};">{{ c2.get_type_display }}</span>
@@ -48,7 +51,12 @@
                         </div>
                         <div class="progress" style="height: 8px; background: var(--bg-secondary);">
                             {% widthratio p1.current_hp c1.hp 100 as hp_pct %}
-                            <div class="progress-bar {% if hp_pct < 25 %}bg-danger{% elif hp_pct < 50 %}bg-warning{% else %}bg-success{% endif %}" role="progressbar" style="width: {% if hp_pct > 100 %}100{% else %}{{ hp_pct }}{% endif %}%"></div>
+                            <div class="progress-bar {% if hp_pct < 25 %}bg-danger{% elif hp_pct < 50 %}bg-warning{% else %}bg-success{% endif %}"
+                                 role="progressbar" aria-label="{{ c1.name }} HP"
+                                 aria-valuenow="{{ p1.current_hp }}" aria-valuemin="0"
+                                 aria-valuemax="{{ c1.hp }}"
+                                 aria-valuetext="{{ p1.current_hp }} of {{ c1.hp }} HP"
+                                 style="width: {% if hp_pct > 100 %}100{% else %}{{ hp_pct }}{% endif %}%"></div>
                         </div>
                     </div>
                     <div class="col-2 text-center">
@@ -63,7 +71,8 @@
                         {% if show_timer %}
                             {% with last_action=battle.actions.last %}
                             {% if last_action %}
-                            <div class="action-flash small mt-1" style="color: var(--accent-red);">
+                            <div class="action-flash small mt-1" style="color: var(--accent-red);"
+                                 role="status" aria-live="polite" aria-atomic="true">
                                 {{ last_action.actor.creature.name }} used {{ last_action.ability.name }}! (-{{ last_action.damage_dealt }} HP)
                             </div>
                             {% endif %}
@@ -77,12 +86,17 @@
                         </div>
                         <div class="progress" style="height: 8px; background: var(--bg-secondary);">
                             {% widthratio p2.current_hp c2.hp 100 as hp_pct %}
-                            <div class="progress-bar {% if hp_pct < 25 %}bg-danger{% elif hp_pct < 50 %}bg-warning{% else %}bg-success{% endif %}" role="progressbar" style="width: {% if hp_pct > 100 %}100{% else %}{{ hp_pct }}{% endif %}%"></div>
+                            <div class="progress-bar {% if hp_pct < 25 %}bg-danger{% elif hp_pct < 50 %}bg-warning{% else %}bg-success{% endif %}"
+                                 role="progressbar" aria-label="{{ c2.name }} HP"
+                                 aria-valuenow="{{ p2.current_hp }}" aria-valuemin="0"
+                                 aria-valuemax="{{ c2.hp }}"
+                                 aria-valuetext="{{ p2.current_hp }} of {{ c2.hp }} HP"
+                                 style="width: {% if hp_pct > 100 %}100{% else %}{{ hp_pct }}{% endif %}%"></div>
                         </div>
                     </div>
                 </div>
 
-                <div class="row mt-3 small text-center">
+                <div class="row mt-3 small text-center"{% if battle.status != 'active' %} role="status" aria-live="polite" aria-atomic="true" aria-label="Battle result"{% endif %}>
                     {% if battle.status == 'active' %}
                         <div class="col-6">
                             {% if battle.creature_1_potential_change %}

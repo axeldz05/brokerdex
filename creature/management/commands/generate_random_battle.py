@@ -1,10 +1,19 @@
 from django.core.management.base import BaseCommand
-from creature.models import Creature, Battle, BattleOutcome, BattleParticipant
+
+from creature.services import BattleService
+
 
 class Command(BaseCommand):
+    help = "Start a random battle between two available creatures."
+
     def handle(self, *args, **options):
-        creaturesQuerySet = Creature.objects.filter(currently_in_battle=False)
-        creature1 = creaturesQuerySet[0]
-        creature2 = creaturesQuerySet[1]
-        battle = Battle.objects.start_battle(self.charmander, self.squirtle)
-        print(battle.creatures)
+        battle = BattleService.matchmake_random_battle()
+        if battle is None:
+            self.stdout.write(self.style.WARNING(
+                "No battle created: fewer than two creatures are available."
+            ))
+            return
+
+        self.stdout.write(self.style.SUCCESS(
+            f"Battle created: {battle.id}."
+        ))
