@@ -92,6 +92,24 @@
         border-radius: 10px;
         padding: 1rem;
     }
+    .chart-status {
+        min-height: 1.25rem;
+        margin: 0.75rem 0 0;
+        color: var(--text-secondary);
+        font-size: 0.75rem;
+    }
+    .price-history-fallback {
+        margin-top: 0.5rem;
+        color: var(--text-secondary);
+        font-size: 0.8rem;
+    }
+    .price-history-fallback summary {
+        cursor: pointer;
+    }
+    .price-history-fallback table {
+        color: var(--text-primary);
+        font-size: 0.75rem;
+    }
 
     .interval-tabs {
         display: flex;
@@ -324,7 +342,10 @@
         <div class="alert alert-{% if message.tags == 'error' %}danger{% else %}{{ message.tags }}{% endif %} alert-dismissible fade show" role="alert"
              style="background: var(--bg-card); border-color: var(--border-color); color: var(--text-primary);">
             {{ message }}
-            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="alert"></button>
+            <button type="button"
+                    class="btn-close btn-close-white"
+                    data-bs-dismiss="alert"
+                    aria-label="Close message"></button>
         </div>
         {% endfor %}
         {% endif %}
@@ -335,14 +356,61 @@
                 <!-- Price Chart -->
                 <div class="card-dark mb-4">
                     <h3>Price History</h3>
-                    <div class="interval-tabs">
-                        <button class="interval-tab active" data-interval="1H">1H</button>
-                        <button class="interval-tab" data-interval="1D">1D</button>
-                        <button class="interval-tab" data-interval="1W">1W</button>
+                    <div class="interval-tabs" role="group" aria-label="Price history interval">
+                        <button type="button"
+                                class="interval-tab active"
+                                data-interval="1H"
+                                aria-label="Show hourly price history"
+                                aria-pressed="true">1H</button>
+                        <button type="button"
+                                class="interval-tab"
+                                data-interval="1D"
+                                aria-label="Show daily price history"
+                                aria-pressed="false">1D</button>
+                        <button type="button"
+                                class="interval-tab"
+                                data-interval="1W"
+                                aria-label="Show weekly price history"
+                                aria-pressed="false">1W</button>
                     </div>
-                    <div class="chart-container">
-                        <canvas id="priceChart"></canvas>
+                    <div class="chart-container"
+                         id="priceChartRegion"
+                         role="region"
+                         aria-label="Price history chart"
+                         aria-busy="true">
+                        <canvas
+                            id="priceChart"
+                            role="img"
+                            aria-label="OHLC candlestick price history with trade volume"
+                            aria-describedby="priceChartStatus"
+                        >
+                            Use the accessible OHLCV table below to review price history.
+                        </canvas>
                     </div>
+                    <p id="priceChartStatus" class="chart-status" role="status" aria-live="polite">
+                        Loading hourly price history.
+                    </p>
+                    <details class="price-history-fallback">
+                        <summary>View accessible OHLCV data</summary>
+                        <div class="table-responsive mt-2">
+                            <table class="table table-sm">
+                                <caption class="visually-hidden">
+                                    Open, high, low, close, and volume price history
+                                </caption>
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Period</th>
+                                        <th scope="col">Open</th>
+                                        <th scope="col">High</th>
+                                        <th scope="col">Low</th>
+                                        <th scope="col">Close</th>
+                                        <th scope="col">Volume</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="priceHistoryTableBody"></tbody>
+                            </table>
+                        </div>
+                    </details>
                 </div>
 
                 <!-- Base Stats -->
@@ -512,20 +580,50 @@
 
                     <!-- Market Order Section -->
                     <div class="order-form mb-3">
-                        <div class="order-tabs" id="marketOrderTabs">
-                            <button class="order-tab active-buy" id="tabBuy" onclick="switchOrderTab('buy')">Buy</button>
-                            <button class="order-tab" id="tabSell" onclick="switchOrderTab('sell')">Sell</button>
+                        <div class="order-tabs"
+                             id="marketOrderTabs"
+                             role="group"
+                             aria-label="Market order side">
+                            <button type="button"
+                                    class="order-tab active-buy"
+                                    id="tabBuy"
+                                    aria-controls="buyForm"
+                                    aria-pressed="true"
+                                    onclick="switchOrderTab('buy')">Buy</button>
+                            <button type="button"
+                                    class="order-tab"
+                                    id="tabSell"
+                                    aria-controls="sellForm"
+                                    aria-pressed="false"
+                                    onclick="switchOrderTab('sell')">Sell</button>
                         </div>
 
                         <!-- Buy Form -->
-                        <form method="POST" action="{% url 'trading:place_order' %}" id="buyForm">
+                        <form method="POST"
+                              action="{% url 'trading:place_order' %}"
+                              id="buyForm"
+                              aria-hidden="false">
                             {% csrf_token %}
                             <input type="hidden" name="execution_type" value="MARKET">
                             <input type="hidden" name="creature" value="{{ creature.pk }}">
                             <input type="hidden" name="order_type" value="BUY">
-                            <label style="font-size:0.8rem; color: var(--text-secondary); margin-bottom:0.3rem; display:block;">Quantity</label>
-                            <input type="number" name="quantity" class="form-input mb-2" step="0.01" min="0.01" placeholder="0.00" id="buyQty" oninput="updateCostSummary('buy')">
-                            <div class="cost-summary" id="buyCostSummary">
+                            <label for="buyQty" style="font-size:0.8rem; color: var(--text-secondary); margin-bottom:0.3rem; display:block;">Quantity</label>
+                            <input type="number"
+                                   name="quantity"
+                                   class="form-input mb-2"
+                                   step="0.01"
+                                   min="0.01"
+                                   placeholder="0.00"
+                                   id="buyQty"
+                                   aria-describedby="buyQtyHelp buyCostSummary"
+                                   oninput="updateCostSummary('buy')">
+                            <span id="buyQtyHelp" class="visually-hidden">
+                                Enter the number of {{ creature.name }} units to buy.
+                            </span>
+                            <div class="cost-summary"
+                                 id="buyCostSummary"
+                                 role="status"
+                                 aria-live="polite">
                                 <div class="row-item">
                                     <span>Price</span>
                                     <span>${{ creature.current_price|floatformat:2 }}</span>
@@ -547,19 +645,37 @@
                         </form>
 
                         <!-- Sell Form -->
-                        <form method="POST" action="{% url 'trading:place_order' %}" id="sellForm" style="display:none;">
+                        <form method="POST"
+                              action="{% url 'trading:place_order' %}"
+                              id="sellForm"
+                              aria-hidden="true"
+                              style="display:none;">
                             {% csrf_token %}
                             <input type="hidden" name="execution_type" value="MARKET">
                             <input type="hidden" name="creature" value="{{ creature.pk }}">
                             <input type="hidden" name="order_type" value="SELL">
-                            <label style="font-size:0.8rem; color: var(--text-secondary); margin-bottom:0.3rem; display:block;">
+                            <label for="sellQty" style="font-size:0.8rem; color: var(--text-secondary); margin-bottom:0.3rem; display:block;">
                                 Quantity
                                 {% if portfolio_entry %}
                                 <span style="float:right;">Available: {{ portfolio_entry.quantity|floatformat:4 }}</span>
                                 {% endif %}
                             </label>
-                            <input type="number" name="quantity" class="form-input mb-2" step="0.01" min="0.01" placeholder="0.00" id="sellQty" oninput="updateCostSummary('sell')">
-                            <div class="cost-summary" id="sellCostSummary">
+                            <input type="number"
+                                   name="quantity"
+                                   class="form-input mb-2"
+                                   step="0.01"
+                                   min="0.01"
+                                   placeholder="0.00"
+                                   id="sellQty"
+                                   aria-describedby="sellQtyHelp sellCostSummary"
+                                   oninput="updateCostSummary('sell')">
+                            <span id="sellQtyHelp" class="visually-hidden">
+                                Enter the number of {{ creature.name }} units to sell.
+                            </span>
+                            <div class="cost-summary"
+                                 id="sellCostSummary"
+                                 role="status"
+                                 aria-live="polite">
                                 <div class="row-item">
                                     <span>Price</span>
                                     <span>${{ creature.current_price|floatformat:2 }}</span>
@@ -583,7 +699,7 @@
 
                     <!-- Limit Order Section -->
                     <div class="order-form">
-                        <p style="font-size:0.8rem; color: var(--text-secondary); margin-bottom:0.75rem;">
+                        <p id="limitOrderHelp" style="font-size:0.8rem; color: var(--text-secondary); margin-bottom:0.75rem;">
                             <i class="bi bi-clock-history me-1"></i>Limit Order
                         </p>
                         <form method="POST" action="{% url 'trading:place_order' %}">
@@ -591,19 +707,37 @@
                             <input type="hidden" name="execution_type" value="LIMIT">
                             <input type="hidden" name="creature" value="{{ creature.pk }}">
                             <div class="mb-2">
-                                <label style="font-size:0.75rem; color: var(--text-secondary);">Type</label>
-                                <select name="order_type" class="form-input" style="padding:0.5rem;">
+                                <label for="limitOrderType" style="font-size:0.75rem; color: var(--text-secondary);">Type</label>
+                                <select name="order_type"
+                                        id="limitOrderType"
+                                        class="form-input"
+                                        aria-describedby="limitOrderHelp"
+                                        style="padding:0.5rem;">
                                     <option value="BUY">Buy Limit</option>
                                     <option value="SELL">Sell Limit</option>
                                 </select>
                             </div>
                             <div class="mb-2">
-                                <label style="font-size:0.75rem; color: var(--text-secondary);">Quantity</label>
-                                <input type="number" name="quantity" class="form-input" step="0.01" min="0.01" placeholder="0.00">
+                                <label for="limitQty" style="font-size:0.75rem; color: var(--text-secondary);">Quantity</label>
+                                <input type="number"
+                                       name="quantity"
+                                       id="limitQty"
+                                       class="form-input"
+                                       step="0.01"
+                                       min="0.01"
+                                       placeholder="0.00"
+                                       aria-describedby="limitOrderHelp">
                             </div>
                             <div class="mb-2">
-                                <label style="font-size:0.75rem; color: var(--text-secondary);">Trigger Price</label>
-                                <input type="number" name="limit_price" class="form-input" step="0.01" min="0.01" placeholder="0.00">
+                                <label for="limitPrice" style="font-size:0.75rem; color: var(--text-secondary);">Trigger Price</label>
+                                <input type="number"
+                                       name="limit_price"
+                                       id="limitPrice"
+                                       class="form-input"
+                                       step="0.01"
+                                       min="0.01"
+                                       placeholder="0.00"
+                                       aria-describedby="limitOrderHelp">
                             </div>
                             <button type="submit" class="btn-buy" style="background: var(--accent-blue);">
                                 Place Limit Order
@@ -629,7 +763,11 @@
                         </div>
                         <form method="POST" action="{% url 'trading:cancel_order' order_id=order.pk %}" style="display:inline;">
                             {% csrf_token %}
-                            <button type="submit" class="btn-cancel-order">Cancel</button>
+                            <button type="submit"
+                                    class="btn-cancel-order"
+                                    aria-label="Cancel {{ order.get_order_type_display }} order for {{ creature.name }}">
+                                Cancel
+                            </button>
                         </form>
                     </div>
                     {% endfor %}
@@ -661,6 +799,9 @@
 
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/luxon@3.4.4/build/global/luxon.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.3.1/dist/chartjs-adapter-luxon.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@0.2.1/dist/chartjs-chart-financial.min.js"></script>
 <script>
 const PRICE = {{ creature.current_price }};
 const COMMISSION_RATE = 0.015;
@@ -668,8 +809,12 @@ const COMMISSION_RATE = 0.015;
 function switchOrderTab(tab) {
     document.getElementById('buyForm').style.display = tab === 'buy' ? 'block' : 'none';
     document.getElementById('sellForm').style.display = tab === 'sell' ? 'block' : 'none';
+    document.getElementById('buyForm').setAttribute('aria-hidden', tab !== 'buy');
+    document.getElementById('sellForm').setAttribute('aria-hidden', tab !== 'sell');
     document.getElementById('tabBuy').className = 'order-tab' + (tab === 'buy' ? ' active-buy' : '');
     document.getElementById('tabSell').className = 'order-tab' + (tab === 'sell' ? ' active-sell' : '');
+    document.getElementById('tabBuy').setAttribute('aria-pressed', tab === 'buy');
+    document.getElementById('tabSell').setAttribute('aria-pressed', tab === 'sell');
 }
 
 function updateCostSummary(type) {
@@ -690,45 +835,137 @@ function updateCostSummary(type) {
 // Price Chart
 let priceChart = null;
 const creatureId = '{{ creature.pk }}';
+const chartStatus = document.getElementById('priceChartStatus');
+const chartRegion = document.getElementById('priceChartRegion');
+const historyTableBody = document.getElementById('priceHistoryTableBody');
+
+function formatHistoryDate(timestamp, interval) {
+    const date = new Date(timestamp);
+    if (interval === '1H') {
+        return date.toLocaleString([], {
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+        });
+    }
+    return date.toLocaleDateString([], {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+    });
+}
+
+function renderAccessibleHistory(entries, interval) {
+    historyTableBody.replaceChildren();
+    if (!entries.length) {
+        const row = historyTableBody.insertRow();
+        const cell = row.insertCell();
+        cell.colSpan = 6;
+        cell.textContent = 'No price history data available yet.';
+        return;
+    }
+
+    entries.forEach(entry => {
+        const row = historyTableBody.insertRow();
+        [
+            formatHistoryDate(entry.timestamp, interval),
+            `$${Number(entry.open).toFixed(2)}`,
+            `$${Number(entry.high).toFixed(2)}`,
+            `$${Number(entry.low).toFixed(2)}`,
+            `$${Number(entry.close).toFixed(2)}`,
+            Number(entry.volume).toLocaleString(),
+        ].forEach((value, index) => {
+            const cell = index === 0
+                ? document.createElement('th')
+                : document.createElement('td');
+            if (index === 0) cell.scope = 'row';
+            cell.textContent = value;
+            row.appendChild(cell);
+        });
+    });
+}
+
+function showChartFallback(message) {
+    if (priceChart) {
+        priceChart.destroy();
+        priceChart = null;
+    }
+    const canvas = document.getElementById('priceChart');
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#8b949e';
+    ctx.font = '14px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(message, canvas.width / 2, canvas.height / 2);
+    chartStatus.textContent = `${message} Use the OHLCV table for accessible data.`;
+}
 
 function loadChart(interval) {
+    chartRegion.setAttribute('aria-busy', 'true');
+    chartStatus.textContent = `Loading ${interval} price history.`;
     fetch(`/trading/api/price-history/${creatureId}/?interval=${interval}`)
-        .then(r => r.json())
+        .then(response => {
+            if (!response.ok) throw new Error('Price history request failed');
+            return response.json();
+        })
         .then(data => {
-            const labels = data.data.map(d => {
-                const dt = new Date(d.timestamp);
-                return interval === '1H' ? dt.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
-                     : dt.toLocaleDateString([], {month:'short', day:'numeric'});
-            });
-            const prices = data.data.map(d => d.close);
+            renderAccessibleHistory(data.data, interval);
+            if (!data.data.length) {
+                showChartFallback('No price history data available yet');
+                return;
+            }
+
+            const candles = data.data.map(entry => ({
+                x: entry.timestamp,
+                o: entry.open,
+                h: entry.high,
+                l: entry.low,
+                c: entry.close,
+            }));
+            const volumes = data.data.map(entry => ({
+                x: entry.timestamp,
+                y: entry.volume,
+            }));
 
             if (priceChart) priceChart.destroy();
 
             const ctx = document.getElementById('priceChart').getContext('2d');
-            const gradient = ctx.createLinearGradient(0, 0, 0, 300);
-            gradient.addColorStop(0, 'rgba(88, 166, 255, 0.2)');
-            gradient.addColorStop(1, 'rgba(88, 166, 255, 0.0)');
 
             priceChart = new Chart(ctx, {
-                type: 'line',
+                type: 'candlestick',
                 data: {
-                    labels: labels,
-                    datasets: [{
-                        label: 'Price',
-                        data: prices,
-                        borderColor: '#58a6ff',
-                        backgroundColor: gradient,
-                        fill: true,
-                        tension: 0.3,
-                        pointRadius: 0,
-                        borderWidth: 2,
-                    }]
+                    datasets: [
+                        {
+                            type: 'candlestick',
+                            label: 'OHLC',
+                            data: candles,
+                            yAxisID: 'price',
+                            color: {
+                                up: '#3fb950',
+                                down: '#f85149',
+                                unchanged: '#8b949e',
+                            },
+                        },
+                        {
+                            type: 'bar',
+                            label: 'Volume',
+                            data: volumes,
+                            yAxisID: 'volume',
+                            backgroundColor: 'rgba(88, 166, 255, 0.25)',
+                            borderColor: 'rgba(88, 166, 255, 0.6)',
+                            borderWidth: 1,
+                        },
+                    ]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    parsing: false,
                     plugins: {
-                        legend: { display: false },
+                        legend: {
+                            labels: { color: '#8b949e' },
+                        },
                         tooltip: {
                             backgroundColor: '#1c2128',
                             borderColor: '#30363d',
@@ -736,42 +973,70 @@ function loadChart(interval) {
                             titleColor: '#e6edf3',
                             bodyColor: '#e6edf3',
                             callbacks: {
-                                label: (ctx) => `$${ctx.parsed.y.toFixed(2)}`
+                                label: context => {
+                                    if (context.dataset.type === 'bar') {
+                                        return `Volume: ${Number(context.raw.y).toLocaleString()}`;
+                                    }
+                                    const candle = context.raw;
+                                    return [
+                                        `Open: $${Number(candle.o).toFixed(2)}`,
+                                        `High: $${Number(candle.h).toFixed(2)}`,
+                                        `Low: $${Number(candle.l).toFixed(2)}`,
+                                        `Close: $${Number(candle.c).toFixed(2)}`,
+                                    ];
+                                }
                             }
                         }
                     },
                     scales: {
                         x: {
+                            type: 'time',
                             grid: { color: 'rgba(48, 54, 61, 0.5)' },
                             ticks: { color: '#8b949e', maxTicksLimit: 8 }
                         },
-                        y: {
+                        price: {
+                            position: 'left',
                             grid: { color: 'rgba(48, 54, 61, 0.5)' },
                             ticks: {
                                 color: '#8b949e',
                                 callback: (val) => '$' + val.toFixed(0)
                             }
+                        },
+                        volume: {
+                            position: 'right',
+                            beginAtZero: true,
+                            grid: { drawOnChartArea: false },
+                            ticks: {
+                                color: '#8b949e',
+                                callback: value => Number(value).toLocaleString(),
+                            },
                         }
                     },
-                    interaction: { intersect: false, mode: 'index' }
+                    interaction: { intersect: false, mode: 'nearest' }
                 }
             });
+            chartStatus.textContent = (
+                `${data.data.length} ${interval} OHLCV periods loaded.`
+            );
         })
         .catch(() => {
-            // No data available; show placeholder
-            const ctx = document.getElementById('priceChart').getContext('2d');
-            ctx.fillStyle = '#8b949e';
-            ctx.font = '14px Inter, sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText('No price history data available yet', ctx.canvas.width / 2, ctx.canvas.height / 2);
+            renderAccessibleHistory([], interval);
+            showChartFallback('Price history is temporarily unavailable');
+        })
+        .finally(() => {
+            chartRegion.setAttribute('aria-busy', 'false');
         });
 }
 
 // Interval tabs
 document.querySelectorAll('.interval-tab').forEach(tab => {
     tab.addEventListener('click', function() {
-        document.querySelectorAll('.interval-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.interval-tab').forEach(t => {
+            t.classList.remove('active');
+            t.setAttribute('aria-pressed', 'false');
+        });
         this.classList.add('active');
+        this.setAttribute('aria-pressed', 'true');
         loadChart(this.dataset.interval);
     });
 });

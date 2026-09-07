@@ -211,6 +211,38 @@ def _json_financial_values(value):
     return value
 
 
+def _realized_summary(user, portfolio_summary):
+    """Summarize snapshotted realized results and combined return."""
+    sell_trades = Trade.objects.filter(
+        seller=user,
+        realized_cost_basis__isnull=False,
+    )
+    realized_pnl = Decimal('0')
+    realized_cost = Decimal('0')
+    for trade in sell_trades:
+        realized_pnl += (
+            trade.total_amount
+            - trade.commission
+            - trade.realized_cost_basis
+        )
+        realized_cost += trade.realized_cost_basis
+
+    total_return = portfolio_summary['total_pnl'] + realized_pnl
+    total_invested = portfolio_summary['total_cost'] + realized_cost
+    return {
+        'realized_pnl': realized_pnl,
+        'realized_pnl_pct': (
+            (realized_pnl / realized_cost * 100).quantize(Decimal('0.01'))
+            if realized_cost > 0 else Decimal('0')
+        ),
+        'total_return': total_return,
+        'total_return_pct': (
+            (total_return / total_invested * 100).quantize(Decimal('0.01'))
+            if total_invested > 0 else Decimal('0')
+        ),
+    }
+
+
 @login_required
 def portfolio_view(request):
     """
@@ -220,8 +252,7 @@ def portfolio_view(request):
         owner=request.user
     ).select_related('creature')
     portfolio_summary = summarize_portfolio_entries(entries)
-    total_cost = portfolio_summary['total_cost']
-    total_pnl = portfolio_summary['total_pnl']
+    realized_summary = _realized_summary(request.user, portfolio_summary)
 
     entry_list = []
     for entry in entries:
@@ -237,40 +268,12 @@ def portfolio_view(request):
             'training_cost': TrainingService.get_training_cost(entry.creature),
         })
 
-    sell_trades = Trade.objects.filter(
-        seller=request.user,
-        realized_cost_basis__isnull=False,
-    ).select_related('creature')
-    realized_pnl = Decimal('0')
-    realized_cost = Decimal('0')
-    for trade in sell_trades:
-        realized_pnl += (
-            trade.total_amount
-            - trade.commission
-            - trade.realized_cost_basis
-        )
-        realized_cost += trade.realized_cost_basis
-
-    total_invested = total_cost + realized_cost
-    total_return = total_pnl + realized_pnl
-    total_return_pct = (
-        (total_return / total_invested * 100).quantize(Decimal('0.01'))
-        if total_invested > 0 else Decimal('0')
-    )
-
     period = normalize_period(request.GET.get('period', 'monthly'))
     ie_data = compute_income_expenses(request.user, period)
 
     context = {
         'entry_list': entry_list,
         'entries': entries,
-        'realized_pnl': realized_pnl,
-        'realized_pnl_pct': (
-            (realized_pnl / realized_cost * 100).quantize(Decimal('0.01'))
-            if realized_cost > 0 else Decimal('0')
-        ),
-        'total_return': total_return,
-        'total_return_pct': total_return_pct,
         'period': period,
         'income_data_json': json.dumps(
             _json_financial_values(ie_data['income_data'])
@@ -283,6 +286,7 @@ def portfolio_view(request):
         ),
     }
     context.update(portfolio_summary)
+    context.update(realized_summary)
     context.update(ie_data)
     return render(request, 'trading/portfolio.html', context)
 
@@ -335,10 +339,18 @@ def price_history_api(request, creature_id):
     if interval not in dict(PriceHistory.Interval.choices):
         interval = '1H'
 
-    history = PriceHistory.objects.filter(
-        creature=creature,
-        interval=interval,
-    ).order_by('timestamp')[:168]  # max 168 data points (7 days of hourly)
+    limits = {
+        PriceHistory.Interval.ONE_HOUR: 168,
+        PriceHistory.Interval.ONE_DAY: 365,
+        PriceHistory.Interval.ONE_WEEK: 52,
+    }
+    history = list(
+        PriceHistory.objects.filter(
+            creature=creature,
+            interval=interval,
+        ).order_by('-timestamp')[:limits[interval]]
+    )
+    history.reverse()
 
     data = [{
         'timestamp': entry.timestamp.isoformat(),
@@ -385,8 +397,12 @@ def market_indices_api(request):
 
     if type_filter:
         indices = indices.filter(creature_type=type_filter)
-
-    latest = indices.order_by('-timestamp').select_related()[:50]
+        latest = indices.order_by('-timestamp')[:50]
+    else:
+        latest = indices.order_by(
+            'creature_type',
+            '-timestamp',
+        ).distinct('creature_type')
 
     data = [{
         'type': idx.creature_type,
@@ -441,6 +457,7 @@ def portfolio_summary_api(request):
     user = request.user
     entries = Portfolio.objects.filter(owner=user).select_related('creature')
     portfolio_summary = summarize_portfolio_entries(entries)
+    realized_summary = _realized_summary(user, portfolio_summary)
     total_pnl_pct = portfolio_summary['total_pnl_pct'].quantize(
         Decimal('0.01')
     )
@@ -455,6 +472,7 @@ def portfolio_summary_api(request):
         'total_cost': portfolio_summary['total_cost'],
         'total_pnl': portfolio_summary['total_pnl'],
         'total_pnl_pct': total_pnl_pct,
+        **realized_summary,
         'income_data': ie_data['income_data'],
         'expenses_data': ie_data['expenses_data'],
         'net_data': ie_data['net_data'],

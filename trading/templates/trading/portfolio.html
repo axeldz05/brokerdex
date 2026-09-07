@@ -109,6 +109,17 @@
     .portfolio-table tbody tr:hover {
         background: rgba(88, 166, 255, 0.04);
     }
+    .portfolio-row-trigger {
+        padding: 0;
+        color: inherit;
+        background: none;
+        border: 0;
+        font: inherit;
+    }
+    .portfolio-row-trigger:focus-visible {
+        outline: 2px solid var(--accent-blue);
+        outline-offset: 3px;
+    }
     .portfolio-table tbody tr.selected {
         background: rgba(88, 166, 255, 0.1);
         border-left: 3px solid var(--accent-blue);
@@ -258,28 +269,33 @@
     <div class="portfolio-header">
         <div class="container">
             <h1 class="mb-1">Portfolio</h1>
-            <div class="nav-links">
+            <nav class="nav-links" aria-label="Trading">
                 <a href="{% url 'trading:market' %}">Market</a>
                 <a href="{% url 'trading:portfolio' %}" class="active">Portfolio</a>
                 <a href="{% url 'trading:orders' %}">Orders</a>
                 <a href="{% url 'dashboard:dashboard' %}">Dashboard</a>
-            </div>
+            </nav>
         </div>
     </div>
 
     <div class="container py-4">
-        <div class="summary-grid">
+        <div class="summary-grid"
+             id="portfolioSummary"
+             role="region"
+             aria-label="Portfolio summary"
+             aria-busy="false"
+             aria-describedby="portfolioRefreshStatus">
             <div class="summary-card">
                 <div class="label">Total Value</div>
-                <div class="value">${{ total_value|floatformat:2 }}</div>
+                <div class="value" id="portfolioTotalValue">${{ total_value|floatformat:2 }}</div>
             </div>
             <div class="summary-card">
                 <div class="label">Total Cost</div>
-                <div class="value">${{ total_cost|floatformat:2 }}</div>
+                <div class="value" id="portfolioTotalCost">${{ total_cost|floatformat:2 }}</div>
             </div>
             <div class="summary-card">
                 <div class="label">Unrealized P&L</div>
-                <div class="value {% if total_pnl >= 0 %}positive{% else %}negative{% endif %}">
+                <div class="value {% if total_pnl >= 0 %}positive{% else %}negative{% endif %}" id="portfolioUnrealizedPnl">
                     {% if total_pnl >= 0 %}+{% endif %}${{ total_pnl|floatformat:2 }}
                     <span style="font-size:0.75rem; display:block; font-weight:400;">
                         {% if total_pnl_pct >= 0 %}+{% endif %}{{ total_pnl_pct|floatformat:2 }}%
@@ -288,7 +304,7 @@
             </div>
             <div class="summary-card">
                 <div class="label">Realized P&L</div>
-                <div class="value {% if realized_pnl >= 0 %}positive{% else %}negative{% endif %}">
+                <div class="value {% if realized_pnl >= 0 %}positive{% else %}negative{% endif %}" id="portfolioRealizedPnl">
                     {% if realized_pnl >= 0 %}+{% endif %}${{ realized_pnl|floatformat:2 }}
                     <span style="font-size:0.75rem; display:block; font-weight:400;">
                         {% if realized_pnl_pct >= 0 %}+{% endif %}{{ realized_pnl_pct|floatformat:2 }}%
@@ -297,7 +313,7 @@
             </div>
             <div class="summary-card" style="grid-column: span 2;">
                 <div class="label">Total Return (Realized + Unrealized)</div>
-                <div class="value {% if total_return >= 0 %}positive{% else %}negative{% endif %}" style="font-size:1.8rem;">
+                <div class="value {% if total_return >= 0 %}positive{% else %}negative{% endif %}" id="portfolioTotalReturn" style="font-size:1.8rem;">
                     {% if total_return >= 0 %}+{% endif %}${{ total_return|floatformat:2 }}
                     <span style="font-size:1rem; font-weight:400;">
                         ({% if total_return_pct >= 0 %}+{% endif %}{{ total_return_pct|floatformat:2 }}%)
@@ -305,6 +321,13 @@
                 </div>
             </div>
         </div>
+        <p id="portfolioRefreshStatus"
+           class="visually-hidden"
+           role="status"
+           aria-live="polite"
+           aria-atomic="true">
+            Portfolio values loaded.
+        </p>
 
         <div class="row g-4">
             <div class="col-lg-8">
@@ -313,15 +336,18 @@
                     {% if entries %}
                     <div class="table-responsive">
                         <table class="portfolio-table">
+                            <caption class="visually-hidden">
+                                Portfolio holdings and current performance
+                            </caption>
                             <thead>
                                 <tr>
-                                    <th>Creature</th>
-                                    <th>Type</th>
-                                    <th class="text-end">Qty</th>
-                                    <th class="text-end hide-mobile">Avg Cost</th>
-                                    <th class="text-end">Value</th>
-                                    <th class="text-end">P&L</th>
-                                    <th class="text-end">Train</th>
+                                    <th scope="col">Creature</th>
+                                    <th scope="col">Type</th>
+                                    <th scope="col" class="text-end">Qty</th>
+                                    <th scope="col" class="text-end hide-mobile">Avg Cost</th>
+                                    <th scope="col" class="text-end">Value</th>
+                                    <th scope="col" class="text-end">P&L</th>
+                                    <th scope="col" class="text-end">Train</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -354,7 +380,13 @@
                                             {% if entry.creature.small_icon_url %}
                                             <img src="{{ entry.creature.small_icon_url }}" alt="{{ entry.creature.name }}">
                                             {% endif %}
-                                            <span class="fw-bold">{{ entry.creature.name }}</span>
+                                            <button type="button"
+                                                    class="portfolio-row-trigger"
+                                                    aria-expanded="false"
+                                                    aria-controls="detailPanel"
+                                                    aria-label="Show details for {{ entry.creature.name }}">
+                                                <span class="fw-bold">{{ entry.creature.name }}</span>
+                                            </button>
                                         </div>
                                     </td>
                                     <td>
@@ -379,6 +411,7 @@
                                         <form method="POST" action="{% url 'creature:train_creature' portfolio_id=entry.pk %}">
                                             {% csrf_token %}
                                             <button type="submit" class="btn btn-sm"
+                                                    aria-label="Train {{ entry.creature.name }} for ${{ entry.training_cost|floatformat:0 }}"
                                                     style="background: var(--accent-blue); color: #fff; border: none; border-radius: 6px; padding: 0.3rem 0.6rem; font-size: 0.75rem; white-space: nowrap;">
                                                 Train ${{ entry.training_cost|floatformat:0 }}
                                             </button>
@@ -390,7 +423,11 @@
                         </table>
                     </div>
 
-                    <div class="detail-panel" id="detailPanel">
+                    <div class="detail-panel"
+                         id="detailPanel"
+                         role="region"
+                         aria-labelledby="detailName"
+                         aria-hidden="true">
                         <div class="row g-3">
                             <div class="col-md-5">
                                 <div class="d-flex align-items-center gap-3 mb-3">
@@ -414,9 +451,13 @@
 
                                 <div class="mt-3">
                                     <div style="font-size:0.7rem; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-secondary); margin-bottom:0.5rem;">
-                                        Recent Trades
+                                        Price History
                                     </div>
-                                    <div id="detailTrades" class="recent-trades-list" style="color:var(--text-secondary);">
+                                    <div id="detailTrades"
+                                         class="recent-trades-list"
+                                         style="color:var(--text-secondary);"
+                                         aria-live="polite"
+                                         aria-busy="false">
                                         Loading...
                                     </div>
                                 </div>
@@ -482,6 +523,7 @@
                                     <form method="POST" id="detailTrainForm" style="margin-top:0.75rem;">
                                         {% csrf_token %}
                                         <button type="submit" class="btn btn-sm w-100"
+                                                id="detailTrainButton"
                                                 style="background: var(--accent-purple); color: #fff; border: none; border-radius: 6px; padding: 0.5rem; font-size:0.8rem; font-weight:600;">
                                             <i class="bi bi-lightning-charge me-1"></i>Train Creature
                                         </button>
@@ -505,9 +547,45 @@
                 <div class="card-dark">
                     <h3>Distribution by Type</h3>
                     {% if entries %}
-                    <div class="donut-container">
-                        <canvas id="distributionChart"></canvas>
+                    <div class="donut-container"
+                         id="distributionChartRegion"
+                         role="region"
+                         aria-label="Portfolio distribution chart"
+                         aria-busy="false">
+                        <canvas id="distributionChart"
+                                role="img"
+                                aria-label="Portfolio value distribution by creature type"
+                                aria-describedby="distributionChartDescription">
+                            Use the distribution table below to review portfolio values by type.
+                        </canvas>
                     </div>
+                    <p id="distributionChartDescription" class="visually-hidden">
+                        Doughnut chart of portfolio value by creature type. An accessible data table follows.
+                    </p>
+                    <details class="mt-2">
+                        <summary>View distribution data</summary>
+                        <div class="table-responsive mt-2">
+                            <table class="table table-sm" id="distributionFallbackTable">
+                                <caption class="visually-hidden">
+                                    Portfolio value distribution by creature type
+                                </caption>
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Type</th>
+                                        <th scope="col" class="text-end">Value</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for type_name, value in type_distribution.items %}
+                                    <tr>
+                                        <th scope="row">{{ type_name|capfirst }}</th>
+                                        <td class="text-end">${{ value|floatformat:2 }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </details>
                     {% else %}
                     <div class="empty-state" style="padding: 2rem;">
                         <p>No data to display.</p>
@@ -517,7 +595,7 @@
 
                 <div class="card-dark mt-4">
                     <h3>Cash Balance</h3>
-                    <div class="value" style="font-size:1.5rem; font-weight:700;">
+                    <div class="value" id="cashBalance" style="font-size:1.5rem; font-weight:700;">
                         ${{ user.balance_dollars|floatformat:2 }}
                     </div>
                     <p style="color:var(--text-secondary); font-size:0.8rem; margin-top:0.5rem;">
@@ -532,9 +610,18 @@
                 <div class="card-dark">
                     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
                         <h3 style="margin-bottom:0;">Income & Expenses</h3>
-                        <div style="display:flex; gap:0.25rem; background:var(--bg-secondary); border-radius:8px; padding:0.25rem;">
-                            <button class="period-tab {% if period == 'monthly' %}active{% endif %}" id="tabMonthly" onclick="switchPeriod('monthly')">Monthly</button>
-                            <button class="period-tab {% if period == 'yearly' %}active{% endif %}" id="tabYearly" onclick="switchPeriod('yearly')">Yearly</button>
+                        <div role="group" aria-label="Income and expenses period"
+                             style="display:flex; gap:0.25rem; background:var(--bg-secondary); border-radius:8px; padding:0.25rem;">
+                            <button type="button"
+                                    class="period-tab {% if period == 'monthly' %}active{% endif %}"
+                                    id="tabMonthly"
+                                    aria-pressed="{% if period == 'monthly' %}true{% else %}false{% endif %}"
+                                    onclick="switchPeriod('monthly')">Monthly</button>
+                            <button type="button"
+                                    class="period-tab {% if period == 'yearly' %}active{% endif %}"
+                                    id="tabYearly"
+                                    aria-pressed="{% if period == 'yearly' %}true{% else %}false{% endif %}"
+                                    onclick="switchPeriod('yearly')">Yearly</button>
                         </div>
                     </div>
 
@@ -561,9 +648,82 @@
                         </div>
                     </div>
 
-                    <div class="chart-container" style="height:300px;">
-                        <canvas id="incomeExpensesChart"></canvas>
+                    <div class="chart-container"
+                         id="incomeExpensesChartRegion"
+                         role="region"
+                         aria-label="Income and expenses chart"
+                         aria-busy="false"
+                         aria-describedby="incomeExpensesChartStatus"
+                         style="height:300px;">
+                        <canvas id="incomeExpensesChart"
+                                role="img"
+                                aria-label="Income and expenses by period">
+                            Use the accessible income, expenses, and net flow tables below.
+                        </canvas>
                     </div>
+                    <p id="incomeExpensesChartStatus"
+                       class="visually-hidden"
+                       role="status"
+                       aria-live="polite"
+                       aria-atomic="true">
+                        Income and expenses chart loaded.
+                    </p>
+                    <details class="mt-2" id="incomeExpensesFallback">
+                        <summary>View income and expenses data</summary>
+                        <div class="table-responsive mt-2">
+                            <table class="table table-sm">
+                                <caption>Income by period</caption>
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Period</th>
+                                        <th scope="col" class="text-end">Income</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="incomeFallbackBody">
+                                    {% for item in income_data %}
+                                    <tr>
+                                        <th scope="row">{{ item.period }}</th>
+                                        <td class="text-end">${{ item.total|floatformat:2 }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                            <table class="table table-sm">
+                                <caption>Expenses by period</caption>
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Period</th>
+                                        <th scope="col" class="text-end">Expenses</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="expensesFallbackBody">
+                                    {% for item in expenses_data %}
+                                    <tr>
+                                        <th scope="row">{{ item.period }}</th>
+                                        <td class="text-end">${{ item.total|floatformat:2 }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                            <table class="table table-sm">
+                                <caption>Net flow by period</caption>
+                                <thead>
+                                    <tr>
+                                        <th scope="col">Period</th>
+                                        <th scope="col" class="text-end">Net flow</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="netFallbackBody">
+                                    {% for item in net_data %}
+                                    <tr>
+                                        <th scope="row">{{ item.period }}</th>
+                                        <td class="text-end">${{ item.total|floatformat:2 }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </details>
                 </div>
             </div>
         </div>
@@ -648,8 +808,18 @@ new Chart(document.getElementById('distributionChart'), {
 
 // --- Creature Detail Panel ---
 function selectCreature(row) {
-    document.querySelectorAll('.portfolio-table tbody tr').forEach(r => r.classList.remove('selected'));
+    document.querySelectorAll('.portfolio-table tbody tr').forEach(r => {
+        r.classList.remove('selected');
+        r.querySelector('.portfolio-row-trigger').setAttribute(
+            'aria-expanded',
+            'false'
+        );
+    });
     row.classList.add('selected');
+    row.querySelector('.portfolio-row-trigger').setAttribute(
+        'aria-expanded',
+        'true'
+    );
 
     const panel = document.getElementById('detailPanel');
     const d = row.dataset;
@@ -660,6 +830,7 @@ function selectCreature(row) {
     const iconPH = document.getElementById('detailIconPlaceholder');
     if (d.creatureLargeIcon || d.creatureIcon) {
         iconImg.src = d.creatureLargeIcon || d.creatureIcon;
+        iconImg.alt = d.creatureName;
         iconImg.style.display = 'block';
         iconPH.style.display = 'none';
     } else {
@@ -723,9 +894,16 @@ function selectCreature(row) {
 
     const trainForm = document.getElementById('detailTrainForm');
     trainForm.action = '/training/' + d.entryId + '/';
+    document.getElementById('detailTrainButton').setAttribute(
+        'aria-label',
+        'Train ' + d.creatureName + ' for $' +
+            parseFloat(d.trainingCost).toFixed(2)
+    );
 
     panel.classList.add('show');
+    panel.setAttribute('aria-hidden', 'false');
 
+    document.getElementById('detailTrades').setAttribute('aria-busy', 'true');
     fetch('/trading/api/price-history/' + d.creatureId + '/?interval=1H')
         .then(r => r.json())
         .then(data => {
@@ -739,20 +917,31 @@ function selectCreature(row) {
                     return '<div class="trade-row"><span style="font-size:0.75rem;">' + date + ' ' + time + '</span><span class="fw-bold">$' + t.close.toFixed(2) + '</span></div>';
                 }).join('');
             } else {
-                tradesContainer.textContent = 'No trades yet.';
+                tradesContainer.textContent = 'No price history yet.';
             }
         })
         .catch(() => {
-            document.getElementById('detailTrades').textContent = 'No trade data available.';
+            document.getElementById('detailTrades').textContent = 'No price history available.';
+        })
+        .finally(() => {
+            document.getElementById('detailTrades').setAttribute('aria-busy', 'false');
         });
 }
 
 document.querySelectorAll('.portfolio-table tbody tr').forEach(row => {
     row.addEventListener('click', function(e) {
-        if (e.target.closest('form') || e.target.closest('button')) return;
+        const trigger = e.target.closest('.portfolio-row-trigger');
+        if (e.target.closest('form') || (e.target.closest('button') && !trigger)) {
+            return;
+        }
         if (this.classList.contains('selected')) {
             this.classList.remove('selected');
+            this.querySelector('.portfolio-row-trigger').setAttribute(
+                'aria-expanded',
+                'false'
+            );
             document.getElementById('detailPanel').classList.remove('show');
+            document.getElementById('detailPanel').setAttribute('aria-hidden', 'true');
         } else {
             selectCreature(this);
         }
@@ -843,12 +1032,44 @@ function switchPeriod(period) {
     currentPeriod = period;
     document.getElementById('tabMonthly').classList.toggle('active', period === 'monthly');
     document.getElementById('tabYearly').classList.toggle('active', period === 'yearly');
+    document.getElementById('tabMonthly').setAttribute('aria-pressed', period === 'monthly');
+    document.getElementById('tabYearly').setAttribute('aria-pressed', period === 'yearly');
     fetchIESection(period);
 }
 
+function renderFallbackRows(bodyId, entries) {
+    const body = document.getElementById(bodyId);
+    if (!body) return;
+    body.replaceChildren();
+    entries.forEach(entry => {
+        const row = document.createElement('tr');
+        const periodCell = document.createElement('th');
+        const valueCell = document.createElement('td');
+        periodCell.scope = 'row';
+        periodCell.textContent = entry.period;
+        valueCell.className = 'text-end';
+        valueCell.textContent = '$' + Number(entry.total).toFixed(2);
+        row.append(periodCell, valueCell);
+        body.appendChild(row);
+    });
+}
+
+function renderIncomeExpensesFallback(data) {
+    renderFallbackRows('incomeFallbackBody', data.income_data);
+    renderFallbackRows('expensesFallbackBody', data.expenses_data);
+    renderFallbackRows('netFallbackBody', data.net_data);
+}
+
 function fetchIESection(period) {
+    const chartRegion = document.getElementById('incomeExpensesChartRegion');
+    const chartStatus = document.getElementById('incomeExpensesChartStatus');
+    chartRegion.setAttribute('aria-busy', 'true');
+    chartStatus.textContent = 'Updating income and expenses chart.';
     fetch('/trading/api/portfolio-summary/?period=' + period)
-        .then(r => r.json())
+        .then(response => {
+            if (!response.ok) throw new Error('Portfolio summary request failed');
+            return response.json();
+        })
         .then(data => {
             const ti = document.getElementById('totalIncome');
             const te = document.getElementById('totalExpenses');
@@ -865,30 +1086,72 @@ function fetchIESection(period) {
                 ieChart.data.datasets[1].data = data.expenses_data.map(d => d.total);
                 ieChart.update();
             }
+            renderIncomeExpensesFallback(data);
+            chartStatus.textContent = 'Income and expenses chart updated.';
         })
-        .catch(() => {});
+        .catch(() => {
+            chartStatus.textContent = 'Income and expenses are temporarily unavailable.';
+        })
+        .finally(() => {
+            chartRegion.setAttribute('aria-busy', 'false');
+        });
+}
+
+function updateSignedSummaryCard(element, value, percentage, inlinePercentage) {
+    if (!element) return;
+    const valueSign = value >= 0 ? '+' : '';
+    const percentageSign = percentage >= 0 ? '+' : '';
+    const percentageText = percentageSign + percentage.toFixed(2) + '%';
+    const percentageMarkup = inlinePercentage
+        ? ' (' + percentageText + ')'
+        : '<span style="font-size:0.75rem;display:block;font-weight:400;">' +
+            percentageText + '</span>';
+    element.innerHTML = valueSign + '$' + value.toFixed(2) + percentageMarkup;
+    element.classList.toggle('positive', value >= 0);
+    element.classList.toggle('negative', value < 0);
 }
 
 function refreshSummary() {
+    const summary = document.getElementById('portfolioSummary');
+    const refreshStatus = document.getElementById('portfolioRefreshStatus');
+    const chartRegion = document.getElementById('incomeExpensesChartRegion');
+    const chartStatus = document.getElementById('incomeExpensesChartStatus');
+    summary.setAttribute('aria-busy', 'true');
+    chartRegion.setAttribute('aria-busy', 'true');
+    refreshStatus.textContent = 'Updating portfolio values.';
     fetch('/trading/api/portfolio-summary/?period=' + currentPeriod)
-        .then(r => r.json())
+        .then(response => {
+            if (!response.ok) throw new Error('Portfolio summary request failed');
+            return response.json();
+        })
         .then(data => {
-            const balEl = document.querySelector('.card-dark .value');
-            if (balEl && balEl.textContent.startsWith('$')) {
-                const balCard = document.querySelectorAll('.card-dark')[document.querySelectorAll('.card-dark').length - 1];
-                if (balCard && balCard.querySelector('.value')) {
-                    balCard.querySelector('.value').textContent = '$' + data.balance.toFixed(2);
-                }
-            }
-            const summaryValues = document.querySelectorAll('.summary-card .value');
-            if (summaryValues.length >= 4) {
-                summaryValues[0].innerHTML = '$' + data.total_value.toFixed(2);
-                summaryValues[1].innerHTML = '$' + data.total_cost.toFixed(2);
-                const pnlSign = data.total_pnl >= 0 ? '+' : '';
-                summaryValues[2].innerHTML = pnlSign + '$' + data.total_pnl.toFixed(2) +
-                    '<span style="font-size:0.75rem;display:block;font-weight:400;">' +
-                    (data.total_pnl_pct >= 0 ? '+' : '') + data.total_pnl_pct.toFixed(2) + '%</span>';
-            }
+            const cashBalance = document.getElementById('cashBalance');
+            const totalValue = document.getElementById('portfolioTotalValue');
+            const totalCost = document.getElementById('portfolioTotalCost');
+            const unrealizedPnl = document.getElementById('portfolioUnrealizedPnl');
+            const realizedPnl = document.getElementById('portfolioRealizedPnl');
+            const totalReturn = document.getElementById('portfolioTotalReturn');
+            if (cashBalance) cashBalance.textContent = '$' + data.balance.toFixed(2);
+            if (totalValue) totalValue.textContent = '$' + data.total_value.toFixed(2);
+            if (totalCost) totalCost.textContent = '$' + data.total_cost.toFixed(2);
+            updateSignedSummaryCard(
+                unrealizedPnl,
+                data.total_pnl,
+                data.total_pnl_pct,
+                false
+            );
+            updateSignedSummaryCard(
+                realizedPnl,
+                data.realized_pnl,
+                data.realized_pnl_pct,
+                false
+            );
+            updateSignedSummaryCard(
+                totalReturn,
+                data.total_return,
+                data.total_return_pct,
+                true
+            );
             const ti = document.getElementById('totalIncome');
             const te = document.getElementById('totalExpenses');
             const nf = document.getElementById('netFlow');
@@ -904,8 +1167,18 @@ function refreshSummary() {
                 ieChart.data.datasets[1].data = data.expenses_data.map(d => d.total);
                 ieChart.update();
             }
+            renderIncomeExpensesFallback(data);
+            refreshStatus.textContent = 'Portfolio values updated.';
+            chartStatus.textContent = 'Income and expenses chart updated.';
         })
-        .catch(() => {});
+        .catch(() => {
+            refreshStatus.textContent = 'Portfolio values are temporarily unavailable.';
+            chartStatus.textContent = 'Income and expenses are temporarily unavailable.';
+        })
+        .finally(() => {
+            summary.setAttribute('aria-busy', 'false');
+            chartRegion.setAttribute('aria-busy', 'false');
+        });
 }
 
 refreshTimer = setInterval(refreshSummary, 15000);

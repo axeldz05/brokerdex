@@ -129,7 +129,7 @@
         {% if active_incubations %}
         <div class="mb-5">
             <h5 class="mb-3" style="color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.85rem;">
-                <i class="bi bi-egg-fill me-2"></i>Currently Incubating
+                <i class="bi bi-egg-fill me-2" aria-hidden="true"></i>Currently Incubating
             </h5>
             {% for inc in active_incubations %}
             <div class="incubation-item">
@@ -138,13 +138,13 @@
                         <strong>{{ inc.egg_template.name }}</strong>
                         <span class="badge-hatching ms-2">Incubating</span>
                     </div>
-                    <small style="color: var(--text-secondary);">
+                    <small style="color: var(--text-secondary);"
+                           role="timer" aria-live="polite" aria-atomic="true"
+                           aria-label="Time until {{ inc.egg_template.name }} hatches">
                         Hatches {{ inc.hatches_at|naturaltime }}
                     </small>
                 </div>
-                <div class="progress-bar-custom">
-                    <div class="progress-fill" style="width: 50%;"></div>
-                </div>
+                {% include "creature/includes/incubation_progress.html" with incubation=inc progress=inc.progress_percent only %}
             </div>
             {% endfor %}
         </div>
@@ -152,7 +152,7 @@
 
         <!-- Egg Shop -->
         <h5 class="mb-3" style="color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.85rem;">
-            <i class="bi bi-bag me-2"></i>Available Eggs
+            <i class="bi bi-bag me-2" aria-hidden="true"></i>Available Eggs
         </h5>
 
         {% if eggs %}
@@ -162,7 +162,7 @@
                 <div class="egg-card">
                     <div class="card-body text-center">
                         <div class="egg-icon">
-                            <i class="bi bi-egg"></i>
+                            <i class="bi bi-egg" aria-hidden="true"></i>
                         </div>
                         <h5 class="fw-bold mb-1">{{ egg.name }}</h5>
                         <p class="mb-2" style="color: var(--text-secondary); font-size: 0.85rem;">
@@ -176,8 +176,8 @@
                         <div class="egg-price mb-3">${{ egg.price|floatformat:2 }}</div>
                         <form method="POST" action="{% url 'creature:purchase_egg' egg.id %}">
                             {% csrf_token %}
-                            <button type="submit" class="btn-purchase">
-                                <i class="bi bi-cart me-1"></i>Purchase
+                            <button type="submit" class="btn-purchase" aria-label="Purchase {{ egg.name }}">
+                                <i class="bi bi-cart me-1" aria-hidden="true"></i>Purchase
                             </button>
                         </form>
                     </div>
@@ -187,7 +187,7 @@
         </div>
         {% else %}
         <div class="text-center py-5" style="color: var(--text-secondary);">
-            <i class="bi bi-egg" style="font-size: 3rem; display: block; margin-bottom: 1rem;"></i>
+            <i class="bi bi-egg" style="font-size: 3rem; display: block; margin-bottom: 1rem;" aria-hidden="true"></i>
             <p>No eggs available right now. Check back later!</p>
         </div>
         {% endif %}

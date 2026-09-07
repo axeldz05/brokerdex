@@ -79,6 +79,14 @@
     .market-table tbody tr:hover {
         background: rgba(88, 166, 255, 0.04);
     }
+    .market-row-link {
+        color: inherit;
+        text-decoration: none;
+    }
+    .market-row-link:focus-visible {
+        outline: 2px solid var(--accent-blue);
+        outline-offset: 3px;
+    }
     .market-table tbody tr:last-child {
         border-bottom: none;
     }
@@ -218,17 +226,22 @@
             <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
                 <div>
                     <h1 class="mb-1">Market</h1>
-                    <div class="nav-links">
+                    <nav class="nav-links" aria-label="Trading">
                         <a href="{% url 'trading:market' %}" class="active">Market</a>
                         <a href="{% url 'trading:portfolio' %}">Portfolio</a>
                         <a href="{% url 'trading:orders' %}">Orders</a>
                         <a href="{% url 'dashboard:dashboard' %}">Dashboard</a>
-                    </div>
+                    </nav>
                 </div>
                 <div class="d-flex gap-2 align-items-center">
+                    <label for="searchInput" class="visually-hidden">Search creatures</label>
                     <input type="text" id="searchInput" class="form-control search-box"
                            placeholder="Search creatures..." style="width: 220px;"
+                           aria-describedby="marketSearchHelp"
                            oninput="filterCreatures(this.value)">
+                    <span id="marketSearchHelp" class="visually-hidden">
+                        Filters the creatures in the market table by name.
+                    </span>
                 </div>
             </div>
         </div>
@@ -238,14 +251,19 @@
         <div class="market-card">
             <div class="table-responsive">
                 <table class="table market-table" id="marketTable">
+                    <caption class="visually-hidden">
+                        Available creatures and current prices
+                    </caption>
                     <thead>
                         <tr>
-                            <th class="creature-icon-cell"></th>
-                            <th>Name</th>
-                            <th class="text-end">Price</th>
-                            <th class="text-end hide-mobile">Change</th>
-                            <th class="text-end hide-mobile">% Change</th>
-                            <th class="text-end">Type</th>
+                            <th scope="col" class="creature-icon-cell">
+                                <span class="visually-hidden">Creature icon</span>
+                            </th>
+                            <th scope="col">Name</th>
+                            <th scope="col" class="text-end">Price</th>
+                            <th scope="col" class="text-end hide-mobile">Change</th>
+                            <th scope="col" class="text-end hide-mobile">% Change</th>
+                            <th scope="col" class="text-end">Type</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -257,12 +275,16 @@
                                 <img src="{{ item.creature.small_icon_url }}" alt="{{ item.creature.name }}">
                                 {% else %}
                                 <div style="width:28px;height:28px;border-radius:4px;background:var(--bg-secondary);display:flex;align-items:center;justify-content:center;">
-                                    <i class="bi bi-diamond-fill" style="font-size:12px;color:var(--text-secondary);"></i>
+                                    <i class="bi bi-diamond-fill" style="font-size:12px;color:var(--text-secondary);" aria-hidden="true"></i>
                                 </div>
                                 {% endif %}
                             </td>
                             <td class="creature-name-col">
-                                <div class="name">{{ item.creature.name }}</div>
+                                <a href="{% url 'trading:creature_detail' creature_id=item.creature.id %}"
+                                   class="market-row-link"
+                                   aria-label="View {{ item.creature.name }} trading details">
+                                    <span class="name">{{ item.creature.name }}</span>
+                                </a>
                             </td>
                             <td class="text-end price-col">${{ item.creature.current_price|floatformat:2 }}</td>
                             <td class="text-end hide-mobile">
@@ -310,5 +332,6 @@ function filterCreatures(query) {
         row.style.display = name.includes(q) ? '' : 'none';
     });
 }
+
 </script>
 {% endblock %}

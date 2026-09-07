@@ -54,6 +54,16 @@ class HatchConfigurationError(ValidationError):
     """A permanent hatch error that requires refunding the purchase."""
 
 
+class TrainingNotReadyError(ValidationError):
+    """A premature task delivery that must not refund training."""
+
+    def __init__(self, session_id, execute_at, now):
+        self.retry_after_seconds = _countdown_until(execute_at, now)
+        super().__init__(
+            f"Training session {session_id} is not ready."
+        )
+
+
 class IncubationService:
     """
     Service for purchasing and hatching eggs.
@@ -313,6 +323,39 @@ class BattleService:
         lose_pct = (-expected * BattleService.MAX_PRICE_CHANGE_PCT).quantize(Decimal('0.01'))
         return win_pct, lose_pct
 
+    @staticmethod
+    def calculate_price_shocks(potential_change_1, potential_change_2):
+        """
+        Return the symmetric reference-price shocks for every battle outcome.
+
+        The active preview and result processing both use these persisted
+        potential changes, so the displayed ELO impact is the applied impact.
+        """
+        change_1 = Decimal(str(potential_change_1))
+        change_2 = Decimal(str(potential_change_2))
+        zero = Decimal('0')
+        return {
+            'creature_1_wins': (change_1, -change_1),
+            'creature_2_wins': (-change_2, change_2),
+            'draw': (zero, zero),
+        }
+
+    @staticmethod
+    def apply_reference_price_shock(creature, change_pct):
+        """Apply one persisted Decimal battle shock to a locked creature."""
+        if change_pct == 0:
+            return False
+        reference_price = (
+            creature.pricing_reference_price
+            or creature.current_price
+        )
+        creature.pricing_reference_price = quantize_money(
+            reference_price * (
+                Decimal('1') + change_pct / Decimal('100')
+            )
+        )
+        return True
+
     @classmethod
     def start_battle(cls, creature_1, creature_2):
         """
@@ -351,12 +394,13 @@ class BattleService:
 
     @classmethod
     def _start_locked_battle(cls, creature_1, creature_2):
-        win_1, lose_1 = cls.calculate_potential_change(
+        win_1, _ = cls.calculate_potential_change(
             creature_1.elo_rating, creature_2.elo_rating
         )
-        win_2, lose_2 = cls.calculate_potential_change(
+        win_2, _ = cls.calculate_potential_change(
             creature_2.elo_rating, creature_1.elo_rating
         )
+        price_shocks = cls.calculate_price_shocks(win_1, win_2)
 
         turn_interval = getattr(settings, 'BATTLE_TURN_INTERVAL', 180)
 
@@ -364,8 +408,12 @@ class BattleService:
 
         battle.creature_1_elo_before = creature_1.elo_rating
         battle.creature_2_elo_before = creature_2.elo_rating
-        battle.creature_1_potential_change = win_1
-        battle.creature_2_potential_change = win_2
+        battle.creature_1_potential_change = (
+            price_shocks['creature_1_wins'][0]
+        )
+        battle.creature_2_potential_change = (
+            price_shocks['creature_2_wins'][1]
+        )
         battle.next_turn_at = (
             timezone.now() + timezone.timedelta(seconds=turn_interval)
         )
@@ -584,13 +632,33 @@ class BattleService:
             c1 = creatures_by_id[p1.creature_id]
             c2 = creatures_by_id[p2.creature_id]
             winner = battle.winner
+            potential_change_1 = battle.creature_1_potential_change
+            potential_change_2 = battle.creature_2_potential_change
+            potential_fields = []
+            if potential_change_1 is None:
+                potential_change_1, _ = cls.calculate_potential_change(
+                    c1.elo_rating,
+                    c2.elo_rating,
+                )
+                battle.creature_1_potential_change = potential_change_1
+                potential_fields.append('creature_1_potential_change')
+            if potential_change_2 is None:
+                potential_change_2, _ = cls.calculate_potential_change(
+                    c2.elo_rating,
+                    c1.elo_rating,
+                )
+                battle.creature_2_potential_change = potential_change_2
+                potential_fields.append('creature_2_potential_change')
 
             if winner and winner.pk == p1.pk:
                 score_1, score_2 = 1, 0
+                outcome = 'creature_1_wins'
             elif winner and winner.pk == p2.pk:
                 score_1, score_2 = 0, 1
+                outcome = 'creature_2_wins'
             else:
                 score_1, score_2 = 0.5, 0.5  # Draw (fallback)
+                outcome = 'draw'
 
             elo_change_1 = cls.calculate_elo_change(
                 c1.elo_rating, c2.elo_rating, score_1
@@ -609,14 +677,27 @@ class BattleService:
                 c2.wins += 1
                 c1.losses += 1
 
-            c1.save(update_fields=['elo_rating', 'wins', 'losses'])
-            c2.save(update_fields=['elo_rating', 'wins', 'losses'])
+            price_shocks = cls.calculate_price_shocks(
+                potential_change_1,
+                potential_change_2,
+            )
+            shock_1, shock_2 = price_shocks[outcome]
+            c1_fields = ['elo_rating', 'wins', 'losses']
+            c2_fields = ['elo_rating', 'wins', 'losses']
+            if cls.apply_reference_price_shock(c1, shock_1):
+                c1_fields.append('pricing_reference_price')
+            if cls.apply_reference_price_shock(c2, shock_2):
+                c2_fields.append('pricing_reference_price')
+
+            c1.save(update_fields=c1_fields)
+            c2.save(update_fields=c2_fields)
 
             battle.creature_1_elo_after = c1.elo_rating
             battle.creature_2_elo_after = c2.elo_rating
             battle.save(update_fields=[
                 'creature_1_elo_after',
                 'creature_2_elo_after',
+                *potential_fields,
             ])
 
             from trading.services import PricingEngine
@@ -648,8 +729,12 @@ class BattleService:
             ).select_related('owner').distinct()
 
             is_winner = battle.winner and battle.winner.pk == p.pk
-            direction = "won" if is_winner else "lost"
-            emoji = "🏆" if is_winner else "💔"
+            if battle.winner is None:
+                direction = "drew"
+                emoji = "🤝"
+            else:
+                direction = "won" if is_winner else "lost"
+                emoji = "🏆" if is_winner else "💔"
 
             notifications = []
             for entry in holders:
@@ -1004,6 +1089,45 @@ class TrainingService:
         )
 
     @classmethod
+    def fail_training(cls, session_id, reason):
+        """Mark a failed training terminal and refund its cost once."""
+        with transaction.atomic():
+            session = TrainingSession.objects.select_for_update().get(
+                pk=session_id
+            )
+            if session.status != TrainingSession.Status.PENDING:
+                return session, False
+
+            refunded = session.refunded_at is None
+            failed_at = timezone.now()
+            if refunded:
+                account = Account.objects.select_for_update().get(
+                    pk=session.user_id
+                )
+                account.balance_cents += session.cost_cents
+                account.save(update_fields=['balance_cents'])
+                session.refunded_at = failed_at
+
+            failure_reason = str(reason)
+            session.status = TrainingSession.Status.FAILED
+            session.failed_at = failed_at
+            session.failure_reason = failure_reason
+            session.scheduling_status = (
+                TrainingSession.SchedulingStatus.FAILED
+            )
+            session.scheduling_error = failure_reason
+            session.save(update_fields=[
+                'status',
+                'failed_at',
+                'failure_reason',
+                'refunded_at',
+                'scheduling_status',
+                'scheduling_error',
+                'updated_at',
+            ])
+            return session, refunded
+
+    @classmethod
     def complete_legacy_training(
         cls,
         creature_id,
@@ -1048,11 +1172,14 @@ class TrainingService:
                 .select_related('creature', 'user')
                 .get(pk=session_id)
             )
-            if session.status == TrainingSession.Status.COMPLETED:
+            if session.status != TrainingSession.Status.PENDING:
                 return session
-            if timezone.now() < session.execute_at:
-                raise ValidationError(
-                    f"Training session {session.pk} is not ready."
+            now = timezone.now()
+            if now < session.execute_at:
+                raise TrainingNotReadyError(
+                    session.pk,
+                    session.execute_at,
+                    now,
                 )
 
             creature = Creature.objects.select_for_update().get(

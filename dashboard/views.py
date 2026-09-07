@@ -7,11 +7,13 @@ from trading.accounting import (
 )
 from trading.models import Portfolio
 
+from .ledger import build_dashboard_ledger
+
 
 @login_required
 def dashboard(request):
     account = request.user
-    transactions = account.get_transaction_history()
+    ledger = build_dashboard_ledger(account)
 
     portfolio_entries = Portfolio.objects.filter(
         owner=account
@@ -21,7 +23,8 @@ def dashboard(request):
     ie_data = compute_income_expenses(account, period)
 
     context = {
-        'transactions': transactions,
+        'ledger': ledger,
+        'transactions': ledger,
         'portfolio_entries': portfolio_entries,
         'period': period,
     }

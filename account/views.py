@@ -1,20 +1,39 @@
-from django.shortcuts import render, redirect
-from django.contrib.auth.forms import AuthenticationForm, PasswordChangeForm
-from django.contrib.auth.decorators import login_required
-from django.contrib.auth import login, logout, update_session_auth_hash
-from django.contrib.auth.models import User
 from django.contrib import messages
-from .forms import AccountUpdateForm, AccountRegistrationForm, AuthenticationForm
+from django.contrib.auth import (
+    login,
+    logout,
+    update_session_auth_hash,
+)
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth.forms import PasswordChangeForm
+from django.shortcuts import redirect, render
+
+from .forms import (
+    AccountAuthenticationForm,
+    AccountRegistrationForm,
+    AccountUpdateForm,
+)
+
+SETTINGS_SECTIONS = {
+    "general",
+    "password",
+    "bank_identifiers",
+    "theme",
+}
+SETTINGS_SECTION_ALIASES = {
+    "account": "password",
+}
+
 
 def log_in(request):
     if request.method == "POST":
-        form = AuthenticationForm(data=request.POST)
+        form = AccountAuthenticationForm(request, data=request.POST)
         if form.is_valid():
             login(request, form.get_user())
             return redirect("index")
     else:
-        form = AuthenticationForm()
-    return render(request,'account/login.html',{"form": form})
+        form = AccountAuthenticationForm(request)
+    return render(request, 'account/login.html', {"form": form})
 
 def register(request):
     if request.method == 'POST':
@@ -36,16 +55,24 @@ def log_out(request):
 
 @login_required
 def settings(request):
-    section = request.GET.get('section', 'general')
+    requested_section = request.GET.get("section", "general")
+    section = SETTINGS_SECTION_ALIASES.get(
+        requested_section,
+        requested_section,
+    )
+    known_section = section in SETTINGS_SECTIONS
+    if not known_section:
+        section = "general"
+
     context = {'section': section}
-    if section == "account":
+    if section == "password":
         if request.method == 'POST':
             form = PasswordChangeForm(request.user, request.POST)
             if form.is_valid():
                 user = form.save()
                 update_session_auth_hash(request, user)
                 messages.success(request, 'Your password has been updated successfully!')
-                return redirect(f"{request.path}?section=account")
+                return redirect(f"{request.path}?section=password")
             else:
                 messages.error(request, 'Please correct the error below.')
         else:
@@ -53,7 +80,7 @@ def settings(request):
         context['password_form'] = form
     elif section == "general":
         account = request.user
-        if request.method == 'POST':
+        if request.method == 'POST' and known_section:
             acc_form = AccountUpdateForm(request.POST, instance=account)
             if acc_form.is_valid():
                 acc_form.save()

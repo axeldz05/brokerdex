@@ -1,8 +1,9 @@
 from django import forms
-from django.contrib.auth.forms import UserCreationForm
+from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
 from django.core.exceptions import ValidationError
+
 from .models import Account
-from django.contrib.auth.forms import AuthenticationForm
+
 
 class AccountUpdateForm(forms.ModelForm):
     username = forms.CharField(
@@ -112,10 +113,20 @@ class AccountRegistrationForm(UserCreationForm):
             raise ValidationError("An account with this email already exists.")
         return email
     def clean_username(self):
-        username= self.cleaned_data.get('username')
+        username = self.cleaned_data.get('username')
         if Account.objects.filter(username=username).exists():
             raise ValidationError("An account with this username already exists.")
         return username
+
+    def save(self, commit=True):
+        if not commit:
+            return super().save(commit=False)
+        return Account.objects.create_user(
+            username=self.cleaned_data['username'],
+            email=self.cleaned_data['email'],
+            password=self.cleaned_data['password1'],
+        )
+
 
 class AccountAuthenticationForm(AuthenticationForm):
     username = forms.CharField(
@@ -133,11 +144,3 @@ class AccountAuthenticationForm(AuthenticationForm):
             'placeholder': 'Your password'
         })
     )
-    
-    def clean_username(self):
-        username = self.cleaned_data.get('username')
-        if not Account.objects.filter(email=username).exists() and \
-           not Account.objects.filter(username=username).exists():
-            raise ValidationError("No account found with this email address or username.")
-        
-        return username

@@ -6,7 +6,7 @@
 {% block content %}
 <div class="container mt-4">
     <a href="{% url 'creature:battle_list' %}" class="btn btn-sm btn-outline-secondary mb-3">
-        <i class='bx bx-arrow-back'></i> Back to Battles
+        <i class='bx bx-arrow-back' aria-hidden="true"></i> Back to Battles
     </a>
 
     <div class="card mb-4">
@@ -33,7 +33,7 @@
         </div>
     </div>
 
-    <h4><i class='bx bx-list-ul'></i> Battle History</h4>
+    <h4><i class='bx bx-list-ul' aria-hidden="true"></i> Battle History</h4>
 
     {% if battles %}
         <div class="row">
@@ -43,7 +43,7 @@
         </div>
     {% else %}
         <div class="text-center text-muted py-5">
-            <i class='bx bx-history' style="font-size: 3rem;"></i>
+            <i class='bx bx-history' style="font-size: 3rem;" aria-hidden="true"></i>
             <p class="mt-2">{{ creature.name }} hasn't participated in any battles yet.</p>
         </div>
     {% endif %}

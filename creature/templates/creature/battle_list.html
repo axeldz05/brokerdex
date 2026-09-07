@@ -5,33 +5,33 @@
 
 {% block content %}
 <div class="container mt-4">
-    <h2 class="mb-4"><i class='bx bx-shield-quarter'></i> Battles</h2>
+    <h2 class="mb-4"><i class='bx bx-shield-quarter' aria-hidden="true"></i> Battles</h2>
 
     <ul class="nav nav-tabs mb-4" id="battleTabs" role="tablist">
         <li class="nav-item" role="presentation">
-            <button class="nav-link active" id="active-tab" data-bs-toggle="tab" data-bs-target="#active" type="button" role="tab">
+            <button class="nav-link active" id="active-tab" data-bs-toggle="tab" data-bs-target="#active" type="button" role="tab" aria-controls="active" aria-selected="true">
                 Active Battles
             </button>
         </li>
         <li class="nav-item" role="presentation">
-            <button class="nav-link" id="historical-tab" data-bs-toggle="tab" data-bs-target="#historical" type="button" role="tab">
+            <button class="nav-link" id="historical-tab" data-bs-toggle="tab" data-bs-target="#historical" type="button" role="tab" aria-controls="historical" aria-selected="false">
                 Historical
             </button>
         </li>
         <li class="nav-item" role="presentation">
-            <button class="nav-link" id="mybattles-tab" data-bs-toggle="tab" data-bs-target="#mybattles" type="button" role="tab">
+            <button class="nav-link" id="mybattles-tab" data-bs-toggle="tab" data-bs-target="#mybattles" type="button" role="tab" aria-controls="mybattles" aria-selected="false">
                 My Battles
             </button>
         </li>
         <li class="nav-item" role="presentation">
-            <button class="nav-link" id="leaderboard-tab" data-bs-toggle="tab" data-bs-target="#leaderboard" type="button" role="tab">
+            <button class="nav-link" id="leaderboard-tab" data-bs-toggle="tab" data-bs-target="#leaderboard" type="button" role="tab" aria-controls="leaderboard" aria-selected="false">
                 Leaderboard
             </button>
         </li>
     </ul>
 
     <div class="tab-content">
-        <div class="tab-pane fade show active" id="active" role="tabpanel">
+        <div class="tab-pane fade show active" id="active" role="tabpanel" aria-labelledby="active-tab" tabindex="0">
             {% if active_battles %}
                 <div class="row">
                 {% for battle in active_battles %}
@@ -40,13 +40,13 @@
                 </div>
             {% else %}
                 <div class="text-center text-muted py-5">
-                    <i class='bx bx-shield-quarter' style="font-size: 3rem;"></i>
+                    <i class='bx bx-shield-quarter' style="font-size: 3rem;" aria-hidden="true"></i>
                     <p class="mt-2">No active battles right now. The system matches creatures automatically every few minutes.</p>
                 </div>
             {% endif %}
         </div>
 
-        <div class="tab-pane fade" id="historical" role="tabpanel">
+        <div class="tab-pane fade" id="historical" role="tabpanel" aria-labelledby="historical-tab" tabindex="0">
             {% if historical_battles %}
                 <div class="row">
                 {% for battle in historical_battles %}
@@ -55,13 +55,13 @@
                 </div>
             {% else %}
                 <div class="text-center text-muted py-5">
-                    <i class='bx bx-history' style="font-size: 3rem;"></i>
+                    <i class='bx bx-history' style="font-size: 3rem;" aria-hidden="true"></i>
                     <p class="mt-2">No battles have been completed yet.</p>
                 </div>
             {% endif %}
         </div>
 
-        <div class="tab-pane fade" id="mybattles" role="tabpanel">
+        <div class="tab-pane fade" id="mybattles" role="tabpanel" aria-labelledby="mybattles-tab" tabindex="0">
             {% if user_battles %}
                 <div class="row">
                 {% for battle in user_battles %}
@@ -70,26 +70,26 @@
                 </div>
             {% else %}
                 <div class="text-center text-muted py-5">
-                    <i class='bx bx-user' style="font-size: 3rem;"></i>
+                    <i class='bx bx-user' style="font-size: 3rem;" aria-hidden="true"></i>
                     <p class="mt-2">None of your creatures have participated in battles yet.</p>
                 </div>
             {% endif %}
         </div>
 
-        <div class="tab-pane fade" id="leaderboard" role="tabpanel">
+        <div class="tab-pane fade" id="leaderboard" role="tabpanel" aria-labelledby="leaderboard-tab" tabindex="0">
             {% if leaderboard %}
                 <div class="table-responsive">
                     <table class="table table-hover" id="leaderboardTable">
                         <thead>
                             <tr>
-                                <th>#</th>
-                                <th>Creature</th>
-                                <th>Type</th>
-                                <th>Wins</th>
-                                <th>Losses</th>
-                                <th>Win Rate</th>
-                                <th>Price</th>
-                                <th></th>
+                                <th scope="col">#</th>
+                                <th scope="col">Creature</th>
+                                <th scope="col">Type</th>
+                                <th scope="col">Wins</th>
+                                <th scope="col">Losses</th>
+                                <th scope="col">Win Rate</th>
+                                <th scope="col">Price</th>
+                                <th scope="col"><span class="visually-hidden">Actions</span></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -101,7 +101,7 @@
                                         {% if creature.small_icon_url %}
                                             <img src="{{ creature.small_icon_url }}" alt="{{ creature.name }}" style="width: 32px; height: 32px; margin-right: 8px;">
                                         {% else %}
-                                            <i class='bx bx-help-circle' style="font-size: 1.5rem; margin-right: 8px;"></i>
+                                            <i class='bx bx-help-circle' style="font-size: 1.5rem; margin-right: 8px;" aria-hidden="true"></i>
                                         {% endif %}
                                         <strong>{{ creature.name }}</strong>
                                     </div>
@@ -121,8 +121,8 @@
                                 </td>
                                 <td>${{ creature.current_price|floatformat:2 }}</td>
                                 <td>
-                                    <a href="{% url 'creature:creature_battle_history' creature.id %}" class="btn btn-sm btn-outline-primary">
-                                        <i class='bx bx-list-ul'></i> Full History
+                                    <a href="{% url 'creature:creature_battle_history' creature.id %}" class="btn btn-sm btn-outline-primary" aria-label="View full battle history for {{ creature.name }}">
+                                        <i class='bx bx-list-ul' aria-hidden="true"></i> Full History
                                     </a>
                                 </td>
                             </tr>
@@ -132,7 +132,7 @@
                 </div>
             {% else %}
                 <div class="text-center text-muted py-5">
-                    <i class='bx bx-trophy' style="font-size: 3rem;"></i>
+                    <i class='bx bx-trophy' style="font-size: 3rem;" aria-hidden="true"></i>
                     <p class="mt-2">No creatures have battle records yet.</p>
                 </div>
             {% endif %}

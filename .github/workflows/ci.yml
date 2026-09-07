@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: brokerdex_test
+          POSTGRES_USER: brokerdex_user
+          POSTGRES_PASSWORD: brokerdex_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U brokerdex_user -d brokerdex_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DJANGO_SETTINGS_MODULE: brokerdex.settings.test
+      DATABASE_URL: postgresql://brokerdex_user:brokerdex_password@localhost:5432/brokerdex_test
+      TEST_DATABASE_URL: postgresql://brokerdex_user:brokerdex_password@localhost:5432/brokerdex_test
+      REDIS_URL: redis://localhost:6379/0
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install locked dependencies
+        run: uv sync --locked
+
+      - name: Lint
+        run: uv run flake8
+
+      - name: Check Django configuration
+        run: uv run python manage.py check
+
+      - name: Check for missing migrations
+        run: uv run python manage.py makemigrations --check --dry-run
+
+      - name: Run test suite
+        run: uv run python manage.py test
+
+      - name: Check production deployment settings
+        env:
+          DJANGO_SETTINGS_MODULE: brokerdex.settings.production
+          DJANGO_SECRET_KEY: ci-deploy-check-7gQ9wK2pL8vN4xR6mT1zY5cF3hJ0sD7aB-X4m9
+          DJANGO_ALLOWED_HOSTS: brokerdex.example.invalid
+          DJANGO_CSRF_TRUSTED_ORIGINS: https://brokerdex.example.invalid
+          DEPOSIT_WEBHOOK_SECRET: ci-deploy-check-webhook-secret
+        run: uv run python manage.py check --deploy --fail-level WARNING

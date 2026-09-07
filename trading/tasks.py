@@ -6,6 +6,15 @@ from .models import PriceHistory
 from .services import PricingEngine, TradingEngine
 
 
+def _record_price_snapshots(interval, label):
+    creatures = Creature.objects.all()
+    count = 0
+    for creature in creatures:
+        PricingEngine.record_price_snapshot(creature, interval)
+        count += 1
+    return f"Recorded {label} snapshots for {count} creatures."
+
+
 @shared_task
 def update_creature_prices():
     """
@@ -36,12 +45,10 @@ def record_hourly_price_snapshots():
     Periodic task: records an hourly OHLCV snapshot for all creatures.
     Runs every hour via Celery Beat.
     """
-    creatures = Creature.objects.all()
-    count = 0
-    for creature in creatures:
-        PricingEngine.record_price_snapshot(creature, PriceHistory.Interval.ONE_HOUR)
-        count += 1
-    return f"Recorded hourly snapshots for {count} creatures."
+    return _record_price_snapshots(
+        PriceHistory.Interval.ONE_HOUR,
+        'hourly',
+    )
 
 
 @shared_task
@@ -50,12 +57,22 @@ def record_daily_price_snapshots():
     Periodic task: records a daily OHLCV snapshot for all creatures.
     Runs once a day via Celery Beat.
     """
-    creatures = Creature.objects.all()
-    count = 0
-    for creature in creatures:
-        PricingEngine.record_price_snapshot(creature, PriceHistory.Interval.ONE_DAY)
-        count += 1
-    return f"Recorded daily snapshots for {count} creatures."
+    return _record_price_snapshots(
+        PriceHistory.Interval.ONE_DAY,
+        'daily',
+    )
+
+
+@shared_task
+def record_weekly_price_snapshots():
+    """
+    Periodic task: records a weekly OHLCV snapshot for all creatures.
+    Runs every Monday via Celery Beat.
+    """
+    return _record_price_snapshots(
+        PriceHistory.Interval.ONE_WEEK,
+        'weekly',
+    )
 
 
 @shared_task

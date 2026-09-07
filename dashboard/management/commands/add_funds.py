@@ -1,13 +1,18 @@
-from django.core.management.base import BaseCommand, CommandError
-from banking.models import Transfer
-from account.models import Account
 import argparse
+from uuid import uuid4
+
+from django.core.management.base import BaseCommand, CommandError
+
+from account.models import Account
+from banking.services import DepositService
+
 
 def positive_int(value):
     ivalue = int(value)
     if ivalue <= 0:
         raise argparse.ArgumentTypeError(f"{value} is not a positive integer")
     return ivalue
+
 
 class Command(BaseCommand):
     help = "Adds funds to a user's balance"
@@ -26,12 +31,18 @@ class Command(BaseCommand):
 
         try:
             account = Account.objects.get(username=username)
-            Transfer.objects.process_external_deposit(
+            DepositService.credit_completed(
+                provider_reference=f"manual:add-funds:{uuid4()}",
                 target_identifier=account.cvu,
-                amount=amount,
-                identifier_type='CVU' 
+                amount_cents=amount,
+                identifier_type='CVU',
             )
-            self.stdout.write(self.style.SUCCESS(f'An amount of ${amount} was added to {username}\'s balance'))
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f'An amount of {amount} cents was added to '
+                    f"{username}'s balance"
+                )
+            )
 
         except Account.DoesNotExist:
             raise CommandError(f'The user "{username}" does not exist')

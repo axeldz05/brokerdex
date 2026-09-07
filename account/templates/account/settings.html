@@ -1,180 +1,110 @@
 {% extends "layout.html" %}
-{% load static %}
 {% block content %}
 <div class="container my-5">
     <div class="row">
-        <!-- Vertical Nav -->
         <div class="col-md-3">
-            <div class="list-group" id="settingsList" role="tablist">
-                <a href="{% url 'account:settings' %}?section=general" class="list-group-item list-group-item-action {% if section == 'general' or not section %}active{% endif %}">
+            <nav class="list-group" aria-label="Account settings">
+                <a href="{% url 'account:settings' %}?section=general" class="list-group-item list-group-item-action{% if section == 'general' %} active{% endif %}">
                     General Settings
                 </a>
-                <a href="{% url 'account:settings' %}?section=privacy" class="list-group-item list-group-item-action {% if section == 'privacy' %}active{% endif %}">
-                    Privacy Settings
+                <a href="{% url 'account:settings' %}?section=password" class="list-group-item list-group-item-action{% if section == 'password' %} active{% endif %}">
+                    Password
                 </a>
-                <a href="{% url 'account:settings' %}?section=account" class="list-group-item list-group-item-action {% if section == 'account' %}active{% endif %}">
-                    Account Settings
+                <a href="{% url 'account:settings' %}?section=bank_identifiers" class="list-group-item list-group-item-action{% if section == 'bank_identifiers' %} active{% endif %}">
+                    Bank Identifiers
                 </a>
-                <a href="{% url 'account:settings' %}?section=bank_accounts" class="list-group-item list-group-item-action {% if section == 'accounts' %}active{% endif %}">
-                    Bank Accounts
-                </a>
-                <a href="{% url 'account:settings' %}?section=theme" class="list-group-item list-group-item-action {% if section == 'theme' %}active{% endif %}">
+                <a href="{% url 'account:settings' %}?section=theme" class="list-group-item list-group-item-action{% if section == 'theme' %} active{% endif %}">
                     Theme
                 </a>
-            </div>
+            </nav>
         </div>
-        <!-- Settings Content -->
         <div class="col-md-9">
-            {% if section == "privacy" %}
-            <h3>Privacy Settings</h3>
-            <form method="post">
-                {% csrf_token %}
-                <div class="form-check form-switch mb-3">
-                    <input class="form-check-input" type="checkbox" id="showEmail" name="showEmail" {% if user.profile.show_email %}checked{% endif %}>
-                    <label class="form-check-label" for="showEmail">Show my email publicly</label>
-                </div>
-                <div class="form-check form-switch mb-3">
-                    <input class="form-check-input" type="checkbox" id="showProfile" name="showProfile" {% if user.profile.show_profile %}checked{% endif %}>
-                    <label class="form-check-label" for="showProfile">Allow search engines to index my profile</label>
-                </div>
-                <button type="submit" class="btn btn-primary">Save Privacy Settings</button>
-            </form>
-            {% elif section == "account" %}
-            <h3>Account Settings</h3>
-            <form method="post" action="{% url 'account:settings' %}?section=account">
-                {% csrf_token %}
-                {% if messages %}
-                <ul class="messages">
-                    {% for message in messages %}
-                    <li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>
-                    {% endfor %}
-                </ul>
-                {% endif %}
-                {% for field in password_form %}
-                    <div class="mb-3">
-                        <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
-                        {{ field }}
-                        {% if field.errors %}
-                        <div class="text-danger">
+            {% if section == "general" %}
+                <h3>General Settings</h3>
+                <form method="post" action="{% url 'account:settings' %}?section=general">
+                    {% csrf_token %}
+                    {{ acc_form.non_field_errors }}
+                    {% for field in acc_form %}
+                        <div class="mb-3">
+                            <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+                            {{ field }}
                             {% for error in field.errors %}
-                            <small>{{ error }}</small><br>
+                                <div class="text-danger"><small>{{ error }}</small></div>
                             {% endfor %}
                         </div>
-                        {% endif %}
-                    </div>
-                {% endfor %}
-                <button type="submit" class="btn btn-primary">Update Account Settings</button>
-            </form>
+                    {% endfor %}
+                    <button type="submit" class="btn btn-primary">Save General Settings</button>
+                </form>
+            {% elif section == "password" %}
+                <h3>Password</h3>
+                <form method="post" action="{% url 'account:settings' %}?section=password">
+                    {% csrf_token %}
+                    {{ password_form.non_field_errors }}
+                    {% for field in password_form %}
+                        <div class="mb-3">
+                            <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+                            {{ field }}
+                            {% if field.help_text %}
+                                <div class="form-text">{{ field.help_text|safe }}</div>
+                            {% endif %}
+                            {% for error in field.errors %}
+                                <div class="text-danger"><small>{{ error }}</small></div>
+                            {% endfor %}
+                        </div>
+                    {% endfor %}
+                    <button type="submit" class="btn btn-primary">Change Password</button>
+                </form>
+            {% elif section == "bank_identifiers" %}
+                <h3>Bank Identifiers</h3>
+                <p class="text-muted">
+                    Use these identifiers to recognize your Brokerdex account.
+                    They cannot be changed here.
+                </p>
+                <div class="mb-3">
+                    <label for="account-cvu" class="form-label">CVU</label>
+                    <input id="account-cvu" class="form-control" type="text" value="{{ user.cvu|default:'' }}" readonly>
+                </div>
+                <div class="mb-3">
+                    <label for="account-alias" class="form-label">Alias</label>
+                    <input id="account-alias" class="form-control" type="text" value="{{ user.alias|default:'' }}" readonly>
+                </div>
             {% elif section == "theme" %}
-            <h3>Theme Settings</h3>
-            <p style="color: var(--text-secondary); margin-bottom: 2rem;">
-                Choose between light and dark mode for the interface.
-            </p>
-            <div class="row g-3">
-                <div class="col-md-6">
-                    <div class="card p-3 text-center theme-option" id="themeDarkCard"
-                         style="cursor:pointer; border: 2px solid var(--accent-blue); transition: all 0.2s;"
-                         onclick="setThemeFromSettings('dark')">
-                        <i class="bi bi-moon-fill" style="font-size: 2rem; color: var(--accent-purple);"></i>
-                        <h5 class="mt-2 mb-1">Dark Mode</h5>
-                        <small style="color: var(--text-secondary);">Easy on the eyes, recommended for trading</small>
+                <h3>Theme</h3>
+                <p class="text-muted">
+                    This preference is stored only in this browser.
+                </p>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <button type="button" class="card p-3 text-center w-100 theme-option" id="themeDarkCard" onclick="setThemeFromSettings('dark')">
+                            <i class="bi bi-moon-fill fs-2"></i>
+                            <span class="h5 mt-2 mb-1">Dark Mode</span>
+                        </button>
+                    </div>
+                    <div class="col-md-6">
+                        <button type="button" class="card p-3 text-center w-100 theme-option" id="themeLightCard" onclick="setThemeFromSettings('light')">
+                            <i class="bi bi-sun-fill fs-2"></i>
+                            <span class="h5 mt-2 mb-1">Light Mode</span>
+                        </button>
                     </div>
                 </div>
-                <div class="col-md-6">
-                    <div class="card p-3 text-center theme-option" id="themeLightCard"
-                         style="cursor:pointer; border: 2px solid var(--border-color); transition: all 0.2s;"
-                         onclick="setThemeFromSettings('light')">
-                        <i class="bi bi-sun-fill" style="font-size: 2rem; color: #d29922;"></i>
-                        <h5 class="mt-2 mb-1">Light Mode</h5>
-                        <small style="color: var(--text-secondary);">Clean, bright interface</small>
-                    </div>
-                </div>
-            </div>
-            <script>
-            function updateThemeCards() {
-                const current = localStorage.getItem('brokerdex-theme') || 'dark';
-                document.getElementById('themeDarkCard').style.borderColor = current === 'dark' ? 'var(--accent-blue)' : 'var(--border-color)';
-                document.getElementById('themeLightCard').style.borderColor = current === 'light' ? 'var(--accent-blue)' : 'var(--border-color)';
-            }
-            function setThemeFromSettings(theme) {
-                localStorage.setItem('brokerdex-theme', theme);
-                document.documentElement.setAttribute('data-theme', theme);
-                updateThemeCards();
-                const icon = document.getElementById('themeIcon');
-                if (icon) {
-                    icon.className = theme === 'light' ? 'bi bi-moon-fill' : 'bi bi-sun-fill';
+                <script>
+                function updateThemeCards() {
+                    const current = localStorage.getItem('brokerdex-theme') || 'dark';
+                    const darkCard = document.getElementById('themeDarkCard');
+                    const lightCard = document.getElementById('themeLightCard');
+                    darkCard.style.borderColor = current === 'dark' ? 'var(--accent-blue)' : 'var(--border-color)';
+                    lightCard.style.borderColor = current === 'light' ? 'var(--accent-blue)' : 'var(--border-color)';
+                    darkCard.setAttribute('aria-pressed', current === 'dark');
+                    lightCard.setAttribute('aria-pressed', current === 'light');
                 }
-            }
-            updateThemeCards();
-            </script>
-            {% elif section == "bank_accounts" %}
-            <h3>Bank Accounts</h3>
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th>Bank Name</th>
-                        <th>Account Number</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for account in bank_accounts %}
-                    <tr>
-                        <td>{{ account.bank_name }}</td>
-                        <td>{{ account.account_number }}</td>
-                        <td>
-                            <a href="{% url 'edit_bank_account' account.id %}" class="btn btn-sm btn-warning">Edit</a>
-                            <a href="{% url 'delete_bank_account' account.id %}" class="btn btn-sm btn-danger">Delete</a>
-                        </td>
-                    </tr>
-                    {% empty %}
-                    <tr>
-                        <td colspan="3">No bank accounts found.</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            <a href="{% url 'add_bank_account' %}" class="btn btn-success">Add New Bank Account</a>
-            {% else %}
-            {# Default to General Settings #}
-            <h3>General Settings</h3>
-            <form method="post">
-                {% csrf_token %}
-                {% if messages %}
-                <ul class="messages">
-                    {% for message in messages %}
-                    <li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>
-                    {% endfor %}
-                </ul>
-                {% endif %}
-                {% for field in user_form %}
-                    <div class="mb-3">
-                        <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
-                        {{ field }}
-                        {% if field.errors %}
-                        <div class="text-danger">
-                            {% for error in field.errors %}
-                            <small>{{ error }}</small><br>
-                            {% endfor %}
-                        </div>
-                        {% endif %}
-                    </div>
-                {% endfor %}
-                {% for field in acc_form %}
-                    <div class="mb-3">
-                        <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
-                        {{ field }}
-                        {% if field.errors %}
-                        <div class="text-danger">
-                            {% for error in field.errors %}
-                            <small>{{ error }}</small><br>
-                            {% endfor %}
-                        </div>
-                        {% endif %}
-                    </div>
-                {% endfor %}
-                <button type="submit" class="btn btn-primary">Save General Settings</button>
-            </form>
+
+                function setThemeFromSettings(theme) {
+                    setTheme(theme);
+                    updateThemeCards();
+                }
+
+                updateThemeCards();
+                </script>
             {% endif %}
         </div>
     </div>

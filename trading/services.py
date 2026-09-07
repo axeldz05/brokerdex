@@ -1,3 +1,4 @@
+from datetime import timezone as datetime_timezone
 from decimal import Decimal, InvalidOperation
 
 from django.core.exceptions import ValidationError
@@ -10,7 +11,7 @@ from account.money import (
     dollars_to_cents,
     quantize_money,
 )
-from creature.models import Creature, Battle
+from creature.models import Creature
 
 from .models import (
     MarketIndex,
@@ -26,14 +27,13 @@ class PricingEngine:
     """
     Dynamic Pricing Engine.
     Formula:
-    price = base_price × (1 + Δ_battles + Δ_market) × rarity_multiplier
+    price = reference_price × (1 + Δ_market) × rarity_multiplier
 
-    - Δ_battles: based on recent win/loss ratio
+    - battle outcomes persist an ELO-derived shock in reference_price
     - Δ_market: buy/sell volume ratio from recent trades
     - rarity_multiplier: legendary/mythical premium
     """
 
-    BATTLE_WEIGHT = Decimal('0.10')    # max ±10% from battles
     MARKET_WEIGHT = Decimal('0.05')    # max ±5% from market pressure
     RARITY_LEGENDARY = Decimal('1.5')
     RARITY_MYTHICAL = Decimal('2.0')
@@ -46,36 +46,6 @@ class PricingEngine:
         if creature.is_legendary:
             return PricingEngine.RARITY_LEGENDARY
         return PricingEngine.RARITY_NORMAL
-
-    @staticmethod
-    def calculate_battle_delta(creature):
-        """
-        Compute Δ_battles from the last 20 battles.
-        Positive if winning more, negative if losing more.
-        """
-        recent_battles = Battle.objects.filter(
-            status='finished',
-            participants__creature=creature
-        ).distinct().order_by('-updated_at')[:20]
-
-        if not recent_battles.exists():
-            return Decimal('0')
-
-        wins = 0
-        total = 0
-        for battle in recent_battles:
-            total += 1
-            if battle.winner and battle.winner.creature_id == creature.pk:
-                wins += 1
-
-        if total == 0:
-            return Decimal('0')
-
-        win_rate = Decimal(str(wins)) / Decimal(str(total))
-        # Center around 0.5: win_rate=1.0 → +BATTLE_WEIGHT, win_rate=0.0 →
-        # -BATTLE_WEIGHT
-        delta = (win_rate - Decimal('0.5')) * 2 * PricingEngine.BATTLE_WEIGHT
-        return delta
 
     @staticmethod
     def calculate_market_delta(creature):
@@ -121,11 +91,10 @@ class PricingEngine:
             creature.pricing_reference_price
             or creature.current_price
         )
-        battle_delta = cls.calculate_battle_delta(creature)
         market_delta = cls.calculate_market_delta(creature)
         rarity = cls.get_rarity_multiplier(creature)
 
-        multiplier = (1 + battle_delta + market_delta) * rarity
+        multiplier = (1 + market_delta) * rarity
         new_price = base_price * multiplier
 
         # Floor at $0.01, cap at Decimal(12,2) max to avoid DB overflow
@@ -170,61 +139,95 @@ class PricingEngine:
             updated += 1
         return updated
 
+    @staticmethod
+    def _completed_snapshot_period(now, interval):
+        """Return the last completed UTC bucket as a half-open interval."""
+        now_utc = now.astimezone(datetime_timezone.utc)
+        if interval == PriceHistory.Interval.ONE_HOUR:
+            period_end = now_utc.replace(
+                minute=0,
+                second=0,
+                microsecond=0,
+            )
+            period_length = timezone.timedelta(hours=1)
+        elif interval == PriceHistory.Interval.ONE_DAY:
+            period_end = now_utc.replace(
+                hour=0,
+                minute=0,
+                second=0,
+                microsecond=0,
+            )
+            period_length = timezone.timedelta(days=1)
+        elif interval == PriceHistory.Interval.ONE_WEEK:
+            day_start = now_utc.replace(
+                hour=0,
+                minute=0,
+                second=0,
+                microsecond=0,
+            )
+            period_end = day_start - timezone.timedelta(
+                days=day_start.weekday()
+            )
+            period_length = timezone.timedelta(weeks=1)
+        else:
+            raise ValueError(f"Unsupported price history interval: {interval}")
+
+        return period_end - period_length, period_end
+
     @classmethod
     def record_price_snapshot(cls, creature, interval):
-        """
-        Record an OHLCV snapshot for a given interval.
-        Uses the current price as OHLC (simplified; for accurate OHLC
-        we'd need to track intra-period high/low from trades).
-        """
-        now = timezone.now()
-        price = creature.current_price
-
-        # Get volume from trades in this interval
-        if interval == PriceHistory.Interval.ONE_HOUR:
-            period_start = now - timezone.timedelta(hours=1)
-        elif interval == PriceHistory.Interval.ONE_DAY:
-            period_start = now - timezone.timedelta(days=1)
-        else:
-            period_start = now - timezone.timedelta(weeks=1)
+        """Record the last completed UTC interval as an OHLCV candle."""
+        period_start, period_end = cls._completed_snapshot_period(
+            timezone.now(),
+            interval,
+        )
 
         period_trades = Trade.objects.filter(
             creature=creature,
             executed_at__gte=period_start,
-            executed_at__lte=now
+            executed_at__lt=period_end,
         )
-        volume = period_trades.aggregate(
-            total=Sum('quantity')
-        )['total'] or Decimal('0')
-
-        # Get actual high/low from trade prices in this period
-        price_agg = period_trades.aggregate(
+        aggregates = period_trades.aggregate(
+            volume=Sum('quantity'),
             high=Max('price_per_unit'),
-            low=Min('price_per_unit')
+            low=Min('price_per_unit'),
         )
 
-        # Use open from previous snapshot or current price
-        previous_snapshot = PriceHistory.objects.filter(
-            creature=creature,
-            interval=interval
-        ).order_by('-timestamp').first()
+        if aggregates['high'] is None:
+            previous_snapshot = PriceHistory.objects.filter(
+                creature=creature,
+                interval=interval,
+                timestamp__lt=period_start,
+            ).order_by('-timestamp').first()
+            carry_price = (
+                previous_snapshot.close_price
+                if previous_snapshot
+                else creature.current_price
+            )
+            open_price = high_price = low_price = close_price = carry_price
+        else:
+            ordered_prices = period_trades.order_by('executed_at', 'pk')
+            open_price = ordered_prices.values_list(
+                'price_per_unit',
+                flat=True,
+            ).first()
+            close_price = ordered_prices.reverse().values_list(
+                'price_per_unit',
+                flat=True,
+            ).first()
+            high_price = aggregates['high']
+            low_price = aggregates['low']
 
-        open_price = (
-            previous_snapshot.close_price if previous_snapshot else price
-        )
-        high_price = max(price, price_agg['high'] or price)
-        low_price = min(price, price_agg['low'] or price)
-
-        snapshot, created = PriceHistory.objects.update_or_create(
+        snapshot, _ = PriceHistory.objects.update_or_create(
             creature=creature,
             interval=interval,
-            timestamp=now.replace(minute=0, second=0, microsecond=0),
+            timestamp=period_start,
             defaults={
                 'open_price': open_price,
                 'high_price': high_price,
                 'low_price': low_price,
-                'close_price': price,
-                'volume': volume,
+                'close_price': close_price,
+                'volume': aggregates['volume'] or Decimal('0'),
             }
         )
         return snapshot

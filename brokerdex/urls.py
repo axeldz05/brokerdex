@@ -18,10 +18,42 @@ from django.conf.urls.static import static
 from django.conf import settings
 from django.contrib import admin
 from django.urls import include, path
+from django.views.generic import RedirectView
 from . import views
 
+
+def _legacy_banking_redirect(route_name):
+    return RedirectView.as_view(
+        pattern_name=f'banking:{route_name}',
+        permanent=True,
+        query_string=True,
+    )
+
+
 urlpatterns = [
+    path('health/live/', views.health_live, name='health_live'),
+    path('health/ready/', views.health_ready, name='health_ready'),
     path('sw.js', views.sw_js, name='sw_js'),
+    path(
+        'banking/transfer/',
+        _legacy_banking_redirect('transfer'),
+        name='legacy_banking_transfer',
+    ),
+    path(
+        'banking/withdraw/',
+        _legacy_banking_redirect('withdraw'),
+        name='legacy_banking_withdraw',
+    ),
+    path(
+        'banking/deposit/',
+        _legacy_banking_redirect('deposit'),
+        name='legacy_banking_deposit',
+    ),
+    path(
+        'banking/invest/',
+        _legacy_banking_redirect('invest'),
+        name='legacy_banking_invest',
+    ),
     path('', include('banking.urls')),
     path('', include('account.urls')),
     path('', include('dashboard.urls')),
@@ -30,4 +62,9 @@ urlpatterns = [
     path('', views.index, name='index'),
     path('admin/', admin.site.urls),
 ]
-urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+if settings.DEBUG:
+    urlpatterns += static(
+        settings.MEDIA_URL,
+        document_root=settings.MEDIA_ROOT,
+    )
