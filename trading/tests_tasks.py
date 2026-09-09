@@ -2,6 +2,7 @@ from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import call, patch
 
+from django.core.cache import cache
 from django.test import SimpleTestCase
 
 from creature.models import Creature
@@ -19,6 +20,14 @@ from .tasks import (
 
 
 class PricingTaskTests(SimpleTestCase):
+    def setUp(self):
+        super().setUp()
+        cache.clear()
+
+    def tearDown(self):
+        cache.clear()
+        super().tearDown()
+
     @patch('trading.tasks.PricingEngine.update_all_prices')
     def test_pricing_task_returns_service_counts_on_redelivery(
         self,
@@ -59,6 +68,18 @@ class PricingTaskTests(SimpleTestCase):
                 call(second_creature),
             ],
         )
+
+    def test_check_limit_orders_skips_when_lock_held(self):
+        cache.clear()
+        lock_key = "celery:lock:trading.tasks.check_pending_limit_orders"
+        cache.set(lock_key, "locked", timeout=60)
+
+        result = check_pending_limit_orders.run()
+        self.assertEqual(
+            result,
+            "Skipped: check_pending_limit_orders is already running.",
+        )
+
 
 
 class PriceSnapshotTaskTests(SimpleTestCase):
@@ -107,6 +128,14 @@ class PriceSnapshotTaskTests(SimpleTestCase):
 
 
 class MarketIndexTaskTests(SimpleTestCase):
+    def setUp(self):
+        super().setUp()
+        cache.clear()
+
+    def tearDown(self):
+        cache.clear()
+        super().tearDown()
+
     @patch(
         'trading.services.MarketIndicesService.calculate_all_indices'
     )
@@ -122,6 +151,18 @@ class MarketIndexTaskTests(SimpleTestCase):
         self.assertEqual(first, 'Recorded 2 market indices.')
         self.assertEqual(second, 'Recorded 0 market indices.')
         self.assertEqual(calculate_all_indices.call_count, 2)
+
+    def test_index_task_skips_when_lock_held(self):
+        cache.clear()
+        lock_key = "celery:lock:trading.tasks.calculate_market_indices"
+        cache.set(lock_key, "locked", timeout=60)
+
+        result = calculate_market_indices.run()
+        self.assertEqual(
+            result,
+            "Skipped: calculate_market_indices is already running.",
+        )
+
 
 
 class BattlePriceTaskTests(SimpleTestCase):

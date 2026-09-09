@@ -3,6 +3,7 @@ from django.conf import settings
 from django.db import OperationalError
 from redis.exceptions import ConnectionError as RedisConnectionError
 
+from brokerdex.locks import prevent_task_overlap
 from .models import Incubation, TrainingSession
 from .services import (
     BattleService,
@@ -21,6 +22,7 @@ _TRANSIENT_TRAINING_ERRORS = (
 
 
 @shared_task
+@prevent_task_overlap(timeout=300)
 def matchmake_random_battle():
     battle = BattleService.matchmake_random_battle()
     if battle:
@@ -208,6 +210,7 @@ def complete_training(self, session_id, portfolio_id=None):
 
 
 @shared_task
+@prevent_task_overlap(timeout=120)
 def recover_creature_operations():
     def schedule_turn(battle_id, current_turn):
         process_battle_turn.apply_async(

@@ -1,6 +1,7 @@
 from celery import shared_task
 from decimal import Decimal
 
+from brokerdex.locks import prevent_task_overlap
 from creature.models import Creature
 from .models import PriceHistory
 from .services import PricingEngine, TradingEngine
@@ -16,6 +17,7 @@ def _record_price_snapshots(interval, label):
 
 
 @shared_task
+@prevent_task_overlap(timeout=120)
 def update_creature_prices():
     """
     Periodic task: recalculates dynamic prices for all creatures.
@@ -26,6 +28,7 @@ def update_creature_prices():
 
 
 @shared_task
+@prevent_task_overlap(timeout=60)
 def check_pending_limit_orders():
     """
     Periodic task: checks all creatures for limit orders that should execute.
@@ -40,6 +43,7 @@ def check_pending_limit_orders():
 
 
 @shared_task
+@prevent_task_overlap(timeout=300)
 def record_hourly_price_snapshots():
     """
     Periodic task: records an hourly OHLCV snapshot for all creatures.
@@ -52,6 +56,7 @@ def record_hourly_price_snapshots():
 
 
 @shared_task
+@prevent_task_overlap(timeout=300)
 def record_daily_price_snapshots():
     """
     Periodic task: records a daily OHLCV snapshot for all creatures.
@@ -64,6 +69,7 @@ def record_daily_price_snapshots():
 
 
 @shared_task
+@prevent_task_overlap(timeout=300)
 def record_weekly_price_snapshots():
     """
     Periodic task: records a weekly OHLCV snapshot for all creatures.
@@ -92,6 +98,7 @@ def update_price_after_battle(creature_id, won):
 
 
 @shared_task
+@prevent_task_overlap(timeout=300)
 def calculate_market_indices():
     """
     Periodic task: calculate and record market indices for all types.
