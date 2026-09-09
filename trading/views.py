@@ -7,6 +7,7 @@ from django.core.exceptions import ValidationError
 from django.http import JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
+from django_ratelimit.decorators import ratelimit
 
 from account.money import cents_to_dollars
 from creature.models import Creature
@@ -118,6 +119,7 @@ def _market_execution_message(action, quantity, creature, order):
 
 
 @login_required
+@ratelimit(key="user", rate="20/m", method="POST", block=True)
 def place_order_view(request):
     """
     POST endpoint for placing market or limit orders.
