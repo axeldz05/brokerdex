@@ -48,6 +48,7 @@ INSTALLED_APPS += EXTERNAL_APPS
 
 MIDDLEWARE = [
     "brokerdex.middleware.RequestIdMiddleware",
+    "django_ratelimit.middleware.RatelimitMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -56,6 +57,10 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
+
+RATELIMIT_VIEW = "brokerdex.views.ratelimited_view"
+RATELIMIT_USE_CACHE = "default"
+
 
 LOGGING = {
     "version": 1,

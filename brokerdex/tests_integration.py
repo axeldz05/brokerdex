@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import json
+import uuid
 from datetime import timedelta
 from decimal import Decimal
 
@@ -285,21 +286,33 @@ class P40BattlePublicContractTests(TestCase):
             password="P40BattlePass123!",
         )
         self.client.force_login(self.account)
-        first = self._create_creature("P40 Underdog", 829)
-        second = self._create_creature("P40 Favorite", 1731)
+        first = self._create_creature(
+            "P40 Underdog",
+            829,
+            creature_id=uuid.UUID("11111111-1111-4111-a111-111111111111"),
+        )
+        second = self._create_creature(
+            "P40 Favorite",
+            1731,
+            creature_id=uuid.UUID("22222222-2222-4222-a222-222222222222"),
+        )
         self.battle = BattleService.start_battle(first, second)
 
-    def _create_creature(self, name, elo_rating):
-        return Creature.objects.create(
-            name=name,
-            description="P40 battle public contract fixture.",
-            type="normal",
-            current_price=Decimal("40.00"),
-            previous_close=Decimal("40.00"),
-            battle_cooldown=timedelta(hours=1),
-            cooldown_expires_at=timezone.now() - timedelta(minutes=1),
-            elo_rating=elo_rating,
-        )
+    def _create_creature(self, name, elo_rating, creature_id=None):
+        params = {
+            "name": name,
+            "description": "P40 battle public contract fixture.",
+            "type": "normal",
+            "current_price": Decimal("40.00"),
+            "previous_close": Decimal("40.00"),
+            "battle_cooldown": timedelta(hours=1),
+            "cooldown_expires_at": timezone.now() - timedelta(minutes=1),
+            "elo_rating": elo_rating,
+        }
+        if creature_id:
+            params["id"] = creature_id
+        return Creature.objects.create(**params)
+
 
     def test_battle_html_and_json_contracts_do_not_expose_elo(self):
         url = reverse("creature:battle_detail", args=[self.battle.pk])

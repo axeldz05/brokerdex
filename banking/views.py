@@ -10,6 +10,7 @@ from django.core.exceptions import ValidationError
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.views.decorators.csrf import csrf_exempt
+from django_ratelimit.decorators import ratelimit
 
 from account.money import cents_to_dollars, dollars_to_cents
 from account.models import Account
@@ -38,6 +39,7 @@ def _message_form_errors(request, form):
 
 
 @login_required
+@ratelimit(key="user", rate="10/m", method="POST", block=True)
 def transfer(request):
     if request.method == 'POST':
         form = TransferForm(request.POST)
@@ -77,6 +79,7 @@ def transfer(request):
 
 
 @login_required
+@ratelimit(key="user", rate="10/m", method="POST", block=True)
 def withdraw(request):
     account = request.user
     if request.method == 'POST':
@@ -127,6 +130,7 @@ def deposit(request):
 
 
 @csrf_exempt
+@ratelimit(key="ip", rate="60/m", method="POST", block=True)
 def deposit_webhook(request):
     if request.method != "POST":
         return JsonResponse(

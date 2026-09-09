@@ -7,6 +7,7 @@ from django.contrib.auth import (
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import PasswordChangeForm
 from django.shortcuts import redirect, render
+from django_ratelimit.decorators import ratelimit
 
 from .forms import (
     AccountAuthenticationForm,
@@ -25,6 +26,8 @@ SETTINGS_SECTION_ALIASES = {
 }
 
 
+@ratelimit(key="ip", rate="5/m", method="POST", block=True)
+@ratelimit(key="post:username", rate="5/m", method="POST", block=True)
 def log_in(request):
     if request.method == "POST":
         form = AccountAuthenticationForm(request, data=request.POST)
@@ -35,6 +38,8 @@ def log_in(request):
         form = AccountAuthenticationForm(request)
     return render(request, 'account/login.html', {"form": form})
 
+
+@ratelimit(key="ip", rate="3/h", method="POST", block=True)
 def register(request):
     if request.method == 'POST':
         form = AccountRegistrationForm(request.POST)
