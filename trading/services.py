@@ -128,7 +128,40 @@ class PricingEngine:
         creature.circuit_breaker_expires_at = (
             locked_creature.circuit_breaker_expires_at
         )
+
+        def broadcast():
+            cls._broadcast_price_update(creature, old_price, new_price)
+
+        transaction.on_commit(broadcast)
         return new_price
+
+    @classmethod
+    def _broadcast_price_update(cls, creature, old_price, new_price):
+        try:
+            from asgiref.sync import async_to_sync
+            from channels.layers import get_channel_layer
+
+            channel_layer = get_channel_layer()
+            if not channel_layer:
+                return
+
+            change, change_pct = creature.price_change()
+            event = {
+                "type": "price_update",
+                "creature_id": str(creature.pk),
+                "creature_name": creature.name,
+                "current_price": str(new_price),
+                "previous_close": str(old_price),
+                "change": str(change),
+                "change_pct": str(change_pct),
+            }
+            async_to_sync(channel_layer.group_send)("price_updates", event)
+            async_to_sync(channel_layer.group_send)(
+                f"price_updates_{creature.pk}",
+                event,
+            )
+        except Exception:
+            pass
 
     @classmethod
     def update_all_prices(cls):

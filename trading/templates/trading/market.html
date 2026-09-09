@@ -162,6 +162,21 @@
         color: var(--text-secondary);
     }
 
+    @keyframes flashGreen {
+        0% { background-color: rgba(63, 185, 80, 0.35); }
+        100% { background-color: transparent; }
+    }
+    @keyframes flashRed {
+        0% { background-color: rgba(248, 81, 73, 0.35); }
+        100% { background-color: transparent; }
+    }
+    .flash-up {
+        animation: flashGreen 1.2s ease-out;
+    }
+    .flash-down {
+        animation: flashRed 1.2s ease-out;
+    }
+
     .stat-bar {
         display: flex;
         gap: 0.75rem;
@@ -269,7 +284,8 @@
                     <tbody>
                         {% for item in creature_data %}
                         <tr onclick="window.location='{% url 'trading:creature_detail' creature_id=item.creature.id %}'"
-                            data-name="{{ item.creature.name|lower }}">
+                            data-name="{{ item.creature.name|lower }}"
+                            data-creature-row="{{ item.creature.id }}">
                             <td class="creature-icon-cell">
                                 {% if item.creature.small_icon_url %}
                                 <img src="{{ item.creature.small_icon_url }}" alt="{{ item.creature.name }}">
@@ -286,14 +302,14 @@
                                     <span class="name">{{ item.creature.name }}</span>
                                 </a>
                             </td>
-                            <td class="text-end price-col">${{ item.creature.current_price|floatformat:2 }}</td>
+                            <td class="text-end price-col" data-price="{{ item.creature.id }}">${{ item.creature.current_price|floatformat:2 }}</td>
                             <td class="text-end hide-mobile">
-                                <span class="change-col {% if item.change > 0 %}change-positive{% elif item.change < 0 %}change-negative{% else %}change-neutral{% endif %}">
+                                <span data-change="{{ item.creature.id }}" class="change-col {% if item.change > 0 %}change-positive{% elif item.change < 0 %}change-negative{% else %}change-neutral{% endif %}">
                                     {% if item.change > 0 %}+{% endif %}${{ item.change|floatformat:2 }}
                                 </span>
                             </td>
                             <td class="text-end hide-mobile">
-                                <span class="change-badge {% if item.change_pct > 0 %}positive{% elif item.change_pct < 0 %}negative{% else %}neutral{% endif %}">
+                                <span data-pct="{{ item.creature.id }}" class="change-badge {% if item.change_pct > 0 %}positive{% elif item.change_pct < 0 %}negative{% else %}neutral{% endif %}">
                                     {% if item.change_pct > 0 %}+{% endif %}{{ item.change_pct|floatformat:2 }}%
                                 </span>
                             </td>
@@ -333,5 +349,65 @@ function filterCreatures(query) {
     });
 }
 
+(function() {
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+    const wsUrl = wsProtocol + window.location.host + '/ws/prices/';
+    let socket = null;
+    let reconnectTimeout = null;
+
+    function connect() {
+        socket = new WebSocket(wsUrl);
+
+        socket.onmessage = function(event) {
+            try {
+                const data = JSON.parse(event.data);
+                if (data.type !== 'price_update') return;
+
+                const creatureId = data.creature_id;
+                const priceEl = document.querySelector(`[data-price="${creatureId}"]`);
+                const changeEl = document.querySelector(`[data-change="${creatureId}"]`);
+                const pctEl = document.querySelector(`[data-pct="${creatureId}"]`);
+                const rowEl = document.querySelector(`[data-creature-row="${creatureId}"]`);
+
+                if (priceEl) {
+                    const oldPrice = parseFloat(priceEl.textContent.replace('$', '')) || 0;
+                    const newPrice = parseFloat(data.current_price);
+                    priceEl.textContent = '$' + newPrice.toFixed(2);
+
+                    if (rowEl) {
+                        rowEl.classList.remove('flash-up', 'flash-down');
+                        void rowEl.offsetWidth;
+                        if (newPrice > oldPrice) {
+                            rowEl.classList.add('flash-up');
+                        } else if (newPrice < oldPrice) {
+                            rowEl.classList.add('flash-down');
+                        }
+                    }
+                }
+
+                if (changeEl) {
+                    const change = parseFloat(data.change);
+                    changeEl.className = 'change-col ' + (change > 0 ? 'change-positive' : (change < 0 ? 'change-negative' : 'change-neutral'));
+                    changeEl.textContent = (change > 0 ? '+' : '') + '$' + change.toFixed(2);
+                }
+
+                if (pctEl) {
+                    const pct = parseFloat(data.change_pct);
+                    pctEl.className = 'change-badge ' + (pct > 0 ? 'positive' : (pct < 0 ? 'negative' : 'neutral'));
+                    pctEl.textContent = (pct > 0 ? '+' : '') + pct.toFixed(2) + '%';
+                }
+            } catch (err) {
+                console.error('Error processing price update:', err);
+            }
+        };
+
+        socket.onclose = function() {
+            clearTimeout(reconnectTimeout);
+            reconnectTimeout = setTimeout(connect, 3000);
+        };
+    }
+
+    connect();
+})();
 </script>
 {% endblock %}

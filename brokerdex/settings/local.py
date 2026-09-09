@@ -45,3 +45,13 @@ DEPOSIT_WEBHOOK_SECRET = env(
     default="",
 )
 
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [CELERY_BROKER_URL],
+        },
+    },
+}
+
+

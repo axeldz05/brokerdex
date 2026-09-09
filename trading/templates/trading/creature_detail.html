@@ -46,6 +46,21 @@
         letter-spacing: 0.05em;
     }
 
+    @keyframes flashGreenText {
+        0% { color: var(--accent-green); text-shadow: 0 0 12px rgba(63, 185, 80, 0.6); }
+        100% { color: inherit; text-shadow: none; }
+    }
+    @keyframes flashRedText {
+        0% { color: var(--accent-red); text-shadow: 0 0 12px rgba(248, 81, 73, 0.6); }
+        100% { color: inherit; text-shadow: none; }
+    }
+    .flash-price-up {
+        animation: flashGreenText 1.5s ease-out;
+    }
+    .flash-price-down {
+        animation: flashRedText 1.5s ease-out;
+    }
+
     .card-dark {
         background: var(--bg-card);
         border: 1px solid var(--border-color);
@@ -328,8 +343,8 @@
                     </div>
                 </div>
             </div>
-            <div class="creature-price-display mt-2">${{ creature.current_price|floatformat:2 }}</div>
-            <div class="creature-change {% if change > 0 %}positive{% elif change < 0 %}negative{% else %}neutral{% endif %}">
+            <div class="creature-price-display mt-2" id="detailCurrentPrice">${{ creature.current_price|floatformat:2 }}</div>
+            <div class="creature-change {% if change > 0 %}positive{% elif change < 0 %}negative{% else %}neutral{% endif %}" id="detailPriceChange">
                 {% if change > 0 %}▲ +{% elif change < 0 %}▼ {% endif %}${{ change|floatformat:2 }}
                 ({% if change_pct > 0 %}+{% endif %}{{ change_pct|floatformat:2 }}%)
             </div>
@@ -626,7 +641,7 @@
                                  aria-live="polite">
                                 <div class="row-item">
                                     <span>Price</span>
-                                    <span>${{ creature.current_price|floatformat:2 }}</span>
+                                    <span id="buyCurrentPrice">${{ creature.current_price|floatformat:2 }}</span>
                                 </div>
                                 <div class="row-item">
                                     <span>Subtotal</span>
@@ -678,7 +693,7 @@
                                  aria-live="polite">
                                 <div class="row-item">
                                     <span>Price</span>
-                                    <span>${{ creature.current_price|floatformat:2 }}</span>
+                                    <span id="sellCurrentPrice">${{ creature.current_price|floatformat:2 }}</span>
                                 </div>
                                 <div class="row-item">
                                     <span>Subtotal</span>
@@ -803,7 +818,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.3.1/dist/chartjs-adapter-luxon.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@0.2.1/dist/chartjs-chart-financial.min.js"></script>
 <script>
-const PRICE = {{ creature.current_price }};
+let PRICE = {{ creature.current_price }};
 const COMMISSION_RATE = 0.015;
 
 function switchOrderTab(tab) {
@@ -1042,5 +1057,73 @@ document.querySelectorAll('.interval-tab').forEach(tab => {
 });
 
 loadChart('1H');
+
+(function() {
+    const creatureId = "{{ creature.id }}";
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+    const wsUrl = wsProtocol + window.location.host + '/ws/prices/' + creatureId + '/';
+    let socket = null;
+    let reconnectTimeout = null;
+
+    function connect() {
+        socket = new WebSocket(wsUrl);
+
+        socket.onmessage = function(event) {
+            try {
+                const data = JSON.parse(event.data);
+                if (data.type !== 'price_update' || data.creature_id !== creatureId) return;
+
+                const newPrice = parseFloat(data.current_price);
+                const oldPrice = PRICE;
+                PRICE = newPrice;
+
+                // Update detail header price with flash
+                const detailPriceEl = document.getElementById('detailCurrentPrice');
+                if (detailPriceEl) {
+                    detailPriceEl.textContent = '$' + newPrice.toFixed(2);
+                    detailPriceEl.classList.remove('flash-price-up', 'flash-price-down');
+                    void detailPriceEl.offsetWidth;
+                    if (newPrice > oldPrice) {
+                        detailPriceEl.classList.add('flash-price-up');
+                    } else if (newPrice < oldPrice) {
+                        detailPriceEl.classList.add('flash-price-down');
+                    }
+                }
+
+                // Update change & badge
+                const detailChangeEl = document.getElementById('detailPriceChange');
+                if (detailChangeEl) {
+                    const change = parseFloat(data.change);
+                    const pct = parseFloat(data.change_pct);
+                    const sign = change > 0 ? '▲ +' : (change < 0 ? '▼ ' : '');
+                    const pctSign = pct > 0 ? '+' : '';
+                    detailChangeEl.className = 'creature-change ' + (change > 0 ? 'positive' : (change < 0 ? 'negative' : 'neutral'));
+                    detailChangeEl.textContent = sign + '$' + change.toFixed(2) + ' (' + pctSign + pct.toFixed(2) + '%)';
+                }
+
+                // Update buy & sell labels
+                const buyEl = document.getElementById('buyCurrentPrice');
+                const sellEl = document.getElementById('sellCurrentPrice');
+                if (buyEl) buyEl.textContent = '$' + newPrice.toFixed(2);
+                if (sellEl) sellEl.textContent = '$' + newPrice.toFixed(2);
+
+                // Recalculate cost summaries if input has a value
+                if (typeof updateCostSummary === 'function') {
+                    updateCostSummary('buy');
+                    updateCostSummary('sell');
+                }
+            } catch (err) {
+                console.error('Error handling price update:', err);
+            }
+        };
+
+        socket.onclose = function() {
+            clearTimeout(reconnectTimeout);
+            reconnectTimeout = setTimeout(connect, 3000);
+        };
+    }
+
+    connect();
+})();
 </script>
 {% endblock %}
