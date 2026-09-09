@@ -1,6 +1,7 @@
 from datetime import timezone as datetime_timezone
 from decimal import Decimal, InvalidOperation
 
+from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Max, Min, Sum
@@ -230,6 +231,7 @@ class PricingEngine:
                 'volume': aggregates['volume'] or Decimal('0'),
             }
         )
+        cache.delete(f"price_history:{creature.pk}:{interval}")
         return snapshot
 
 
@@ -978,6 +980,31 @@ class MarketIndicesService:
     of that type currently in the market.
     """
 
+    CACHE_KEY = "market_indices:latest"
+    CACHE_TIMEOUT = 300
+
+    @classmethod
+    def invalidate_cache(cls):
+        cache.delete(cls.CACHE_KEY)
+
+    @classmethod
+    def get_latest_indices(cls):
+        cached = cache.get(cls.CACHE_KEY)
+        if cached is not None:
+            return cached
+
+        latest_indices = []
+        for type_choice in MarketIndex._meta.get_field('creature_type').choices:
+            type_value = type_choice[0]
+            latest = MarketIndex.objects.filter(
+                creature_type=type_value
+            ).order_by('-timestamp').first()
+            if latest:
+                latest_indices.append(latest)
+
+        cache.set(cls.CACHE_KEY, latest_indices, timeout=cls.CACHE_TIMEOUT)
+        return latest_indices
+
     @classmethod
     def calculate_all_indices(cls):
         """
@@ -993,6 +1020,7 @@ class MarketIndicesService:
             if index:
                 indices.append(index)
 
+        cls.invalidate_cache()
         return indices
 
     @classmethod

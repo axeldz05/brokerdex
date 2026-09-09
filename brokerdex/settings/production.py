@@ -20,6 +20,16 @@ DATABASES = {
 
 CELERY_BROKER_URL = env("REDIS_URL")
 CELERY_RESULT_BACKEND = CELERY_BROKER_URL
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": env("REDIS_CACHE_URL", default=CELERY_BROKER_URL),
+        "KEY_PREFIX": "brokerdex",
+        "TIMEOUT": 300,
+    }
+}
+
 DEPOSIT_WEBHOOK_SECRET = env("DEPOSIT_WEBHOOK_SECRET")
 
 LOGGING = deepcopy(BASE_LOGGING)

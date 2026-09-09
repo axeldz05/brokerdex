@@ -4,7 +4,9 @@ from tempfile import TemporaryDirectory
 
 from django.test import TestCase, Client, override_settings
 from django.urls import reverse
+from django.core.cache import cache
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 
 from account.models import Account
 from creature.models import Creature, Ability, Battle, Incubation, EggTemplate
@@ -218,6 +220,64 @@ class TradingIntegrationTests(TestCase):
         self.assertIn('low', entry)
         self.assertIn('close', entry)
         self.assertIn('volume', entry)
+
+    def test_price_history_api_uses_cache_and_invalidates_on_snapshot(self):
+        cache.clear()
+        self._login()
+        PricingEngine.record_price_snapshot(
+            self.creature, PriceHistory.Interval.ONE_HOUR
+        )
+        url = reverse('trading:price_history_api', args=[self.creature.pk])
+
+        # First request populates cache
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        initial_data = response.json()
+        self.assertEqual(len(initial_data['data']), 1)
+
+        # Directly inject another record without calling record_price_snapshot
+        PriceHistory.objects.create(
+            creature=self.creature,
+            interval=PriceHistory.Interval.ONE_HOUR,
+            timestamp=timezone.now() - timedelta(hours=2),
+            open_price=Decimal('100.00'),
+            high_price=Decimal('110.00'),
+            low_price=Decimal('90.00'),
+            close_price=Decimal('105.00'),
+            volume=Decimal('5'),
+        )
+
+        # Second request must be served from cache (length remains 1)
+        cached_response = self.client.get(url)
+        self.assertEqual(len(cached_response.json()['data']), 1)
+
+        # Invalidate explicitly via record_price_snapshot
+        PricingEngine.record_price_snapshot(
+            self.creature, PriceHistory.Interval.ONE_HOUR
+        )
+
+        # Third request gets fresh data (length 2)
+        fresh_response = self.client.get(url)
+        self.assertEqual(len(fresh_response.json()['data']), 2)
+
+    def test_market_indices_view_uses_cache_and_invalidates(self):
+        cache.clear()
+        self._login()
+        MarketIndex.objects.create(
+            creature_type=self.creature.type,
+            value=Decimal('150.00'),
+            previous_value=Decimal('140.00'),
+            timestamp=timezone.now(),
+        )
+        url = reverse('trading:market_indices')
+
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNotNone(cache.get(MarketIndicesService.CACHE_KEY))
+
+        MarketIndicesService.invalidate_cache()
+        self.assertIsNone(cache.get(MarketIndicesService.CACHE_KEY))
+
 
     def test_insufficient_funds_via_view_shows_error(self):
         self._login()

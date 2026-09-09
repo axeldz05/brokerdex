@@ -2,6 +2,7 @@ import json
 from decimal import Decimal
 
 from django.contrib.auth.decorators import login_required
+from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.http import JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
@@ -23,7 +24,7 @@ from .models import (
     PriceHistory,
     Trade,
 )
-from .services import TradingEngine
+from .services import TradingEngine, MarketIndicesService
 from creature.services import TrainingService, BattleService
 
 
@@ -339,6 +340,11 @@ def price_history_api(request, creature_id):
     if interval not in dict(PriceHistory.Interval.choices):
         interval = '1H'
 
+    cache_key = f"price_history:{creature.pk}:{interval}"
+    cached_payload = cache.get(cache_key)
+    if cached_payload is not None:
+        return JsonResponse(cached_payload)
+
     limits = {
         PriceHistory.Interval.ONE_HOUR: 168,
         PriceHistory.Interval.ONE_DAY: 365,
@@ -361,11 +367,14 @@ def price_history_api(request, creature_id):
         'volume': float(entry.volume),
     } for entry in history]
 
-    return JsonResponse({
+    payload = {
         'creature': creature.name,
         'interval': interval,
         'data': data,
-    })
+    }
+    cache.set(cache_key, payload, timeout=60)
+
+    return JsonResponse(payload)
 
 
 @login_required
@@ -373,15 +382,7 @@ def market_indices_view(request):
     """
     Show latest market indices for all types.
     """
-    latest_indices = []
-    for type_choice in MarketIndex._meta.get_field('creature_type').choices:
-        type_value = type_choice[0]
-        latest = MarketIndex.objects.filter(
-            creature_type=type_value
-        ).order_by('-timestamp').first()
-        if latest:
-            latest_indices.append(latest)
-
+    latest_indices = MarketIndicesService.get_latest_indices()
     return render(request, 'trading/market_indices.html', {
         'indices': latest_indices,
     })

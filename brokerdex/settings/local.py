@@ -30,7 +30,18 @@ CELERY_BROKER_URL = env(
     default="redis://localhost:6379/0",
 )
 CELERY_RESULT_BACKEND = CELERY_BROKER_URL
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": env("REDIS_CACHE_URL", default=CELERY_BROKER_URL),
+        "KEY_PREFIX": "brokerdex",
+        "TIMEOUT": 300,
+    }
+}
+
 DEPOSIT_WEBHOOK_SECRET = env(
     "DEPOSIT_WEBHOOK_SECRET",
     default="",
 )
+

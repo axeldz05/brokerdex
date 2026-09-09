@@ -6,9 +6,14 @@ import sys
 
 def main():
     """Run administrative tasks."""
+    default_settings = (
+        "brokerdex.settings.test"
+        if len(sys.argv) > 1 and sys.argv[1] == "test"
+        else "brokerdex.settings.local"
+    )
     os.environ.setdefault(
         "DJANGO_SETTINGS_MODULE",
-        "brokerdex.settings.local",
+        default_settings,
     )
     try:
         from django.core.management import execute_from_command_line

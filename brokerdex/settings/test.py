@@ -23,3 +23,11 @@ CELERY_BROKER_URL = env(
     default="redis://localhost:6379/15",
 )
 CELERY_RESULT_BACKEND = CELERY_BROKER_URL
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "brokerdex-test-cache",
+    }
+}
+
