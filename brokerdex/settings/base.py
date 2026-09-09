@@ -157,6 +157,13 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
 
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "brokerdex-default-cache",
+    }
+}
+
 BATTLE_TURN_INTERVAL = 180
 DEPOSIT_WEBHOOK_SECRET = ""
 
