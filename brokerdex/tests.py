@@ -339,8 +339,8 @@ class RuntimeConfigurationTests(SimpleTestCase):
             processes,
             [
                 (
-                    "web: uv run gunicorn brokerdex.wsgi:application "
-                    "--bind 0.0.0.0:${PORT:-8000}"
+                    "web: uv run daphne -b 0.0.0.0 -p ${PORT:-8000} "
+                    "brokerdex.asgi:application"
                 ),
                 (
                     "worker: DJANGO_SETTINGS_MODULE="
@@ -390,5 +390,6 @@ class RuntimeConfigurationTests(SimpleTestCase):
         self.assertNotIn("manage.py runserver", script)
 
     def test_production_runtime_dependencies_are_installed(self):
+        self.assertIsNotNone(find_spec("daphne"))
         self.assertIsNotNone(find_spec("gunicorn"))
         self.assertIsNotNone(find_spec("whitenoise"))

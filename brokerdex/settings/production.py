@@ -32,6 +32,15 @@ CACHES = {
 
 DEPOSIT_WEBHOOK_SECRET = env("DEPOSIT_WEBHOOK_SECRET")
 
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [CELERY_BROKER_URL],
+        },
+    },
+}
+
 LOGGING = deepcopy(BASE_LOGGING)
 LOGGING["handlers"]["console"]["formatter"] = "json"
 

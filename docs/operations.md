@@ -8,7 +8,7 @@ arquitectura y las invariantes de dominio están en [AGENTS.md](../AGENTS.md).
 - Python 3.13 y `uv`; instalar siempre desde `uv.lock`.
 - Django 5.2.x con PostgreSQL.
 - Celery 5.6.x con Redis como broker y result backend.
-- Gunicorn para WSGI y WhiteNoise para static en producción.
+- Daphne para ASGI (HTTP + WebSockets) y WhiteNoise para static en producción.
 
 Verificación del runtime:
 
@@ -61,7 +61,7 @@ Necesarias según el despliegue:
   ejemplo `https://app.example.com`.
 - `DEPOSIT_WEBHOOK_SECRET`: secreto compartido del webhook. Si está vacío, el
   endpoint rechaza todas las solicitudes con `invalid_signature`.
-- `PORT`: consumida por el comando Gunicorn de `Procfile`; default 8000.
+- `PORT`: consumida por el comando Daphne de `Procfile`; default 8000.
 - `DJANGO_TRUST_X_FORWARDED_PROTO=True`: solo detrás de un proxy confiable que
   elimina el header entrante y establece `X-Forwarded-Proto`.
 
@@ -134,7 +134,7 @@ DJANGO_SETTINGS_MODULE=brokerdex.settings.production uv run python manage.py col
 `Procfile` declara:
 
 ```text
-web: uv run gunicorn brokerdex.wsgi:application --bind 0.0.0.0:${PORT:-8000}
+web: uv run daphne -b 0.0.0.0 -p ${PORT:-8000} brokerdex.asgi:application
 worker: DJANGO_SETTINGS_MODULE=brokerdex.settings.production uv run celery -A brokerdex worker --loglevel=info
 beat: DJANGO_SETTINGS_MODULE=brokerdex.settings.production uv run celery -A brokerdex beat --loglevel=info
 ```
