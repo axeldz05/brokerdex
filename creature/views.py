@@ -143,6 +143,8 @@ def battle_detail_view(request, battle_id):
     """
     battle = BattleService.get_battle_detail(battle_id)
     if not battle:
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return JsonResponse({'error': 'Battle not found.'}, status=404)
         messages.error(request, "Battle not found.")
         return redirect('creature:battle_list')
 
