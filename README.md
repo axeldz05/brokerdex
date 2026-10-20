@@ -70,26 +70,36 @@ PokeAPI.
 
 Brokerdex incluye un generador de población a gran escala y un motor de bots autónomos para simular un mercado financiero vivo:
 
+> [!TIP]
+> Puedes utilizar el script `./manage.sh <comando>` tanto con Docker activo como en local; detecta automáticamente si el contenedor `brokerdex_web` está corriendo y ejecuta el comando en el entorno adecuado.
+
 1. **Poblar el mercado masivo**:
    ```bash
-   uv run python manage.py seed_all --simulation
+   ./manage.sh seed_all --simulation
    # o reiniciando la base:
-   uv run python manage.py seed_all --clear --simulation
+   ./manage.sh seed_all --clear --simulation
    ```
    Crea 100 entrenadores, carteras distribuidas, 30 días de historial de velas OHLCV (1H, 1D, 1W), trades pasados, incubaciones y combates con shocks ELO.
 
 2. **Monitoreo en vivo de bots (Stream interactivo)**:
    ```bash
-   uv run python manage.py run_bots
+   ./manage.sh run_bots
    # o con intervalo configurable (ej. cada 2 segundos):
-   uv run python manage.py bots --stream --interval 2.0
+   ./manage.sh bots --stream --interval 2.0
    ```
 
-3. **Control de autonomía en tiempo real**:
+3. **Ejecutar bots en segundo plano con Docker**:
    ```bash
-   uv run python manage.py bots --status   # Muestra métricas por estrategia
-   uv run python manage.py bots --stop     # Pausa la autonomía de los bots
-   uv run python manage.py bots --start    # Reanuda la autonomía
+   docker compose --profile bots up -d
+   # para ver los logs en streaming:
+   docker compose logs -f bots
+   ```
+
+4. **Control de autonomía en tiempo real**:
+   ```bash
+   ./manage.sh bots --status   # Muestra métricas por estrategia
+   ./manage.sh bots --stop     # Pausa la autonomía de los bots
+   ./manage.sh bots --start    # Reanuda la autonomía
    ```
 
 Estrategias de bots implementadas:
@@ -97,6 +107,18 @@ Estrategias de bots implementadas:
 - `[VALUE]`: Caza descuentos o toma ganancias según el precio de referencia intrínseco.
 - `[MARKET_MAKER]`: Provee liquidez colocando órdenes límite alrededor del spread.
 - `[CASUAL]`: Compras esporádicas y apertura de incubaciones.
+
+### Entorno de Data Science (JupyterLab + Pure SQL)
+
+Brokerdex incluye un entorno analítico interactivo con JupyterLab, Pandas, Plotly y Seaborn, conectado a PostgreSQL mediante consultas SQL:
+
+- **En Docker**: El servicio `jupyter` se inicia automáticamente con `docker compose up`. Acceso directo en **[http://localhost:8888/](http://localhost:8888/)** (sin token ni contraseña).
+- **En Local**: Ejecuta `uv run jupyter lab --notebook-dir=notebooks`.
+
+Notebooks listos para usar en [`notebooks/`](file:///home/drusila/Projects/brokerdex-django/notebooks/):
+1. **`01_market_and_prices.ipynb`**: Velas interactivas (Candlesticks Plotly), volumen y ranking de liquidez.
+2. **`02_battles_and_metagame.ipynb`**: Win-rates por criatura, mapa de calor de emparejamientos elementales y relación ELO/precio.
+3. **`03_bots_and_macroeconomics.ipynb`**: Masa monetaria $M_1$, Curva de Lorenz, Coeficiente de Gini y comisiones recaudadas.
 
 ## Conducta implementada
 

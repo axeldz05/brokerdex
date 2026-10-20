@@ -112,6 +112,57 @@ services:
       - .:/app
       - /app/.venv
 
+  jupyter:
+    build: .
+    container_name: brokerdex_jupyter
+    command: >
+      uv run jupyter lab
+      --ip=0.0.0.0
+      --port=8888
+      --no-browser
+      --allow-root
+      --ServerApp.token=''
+      --ServerApp.password=''
+      --ServerApp.allow_origin='*'
+      --notebook-dir=/app/notebooks
+    ports:
+      - "8888:8888"
+    environment:
+      - DATABASE_URL=postgresql://brokerdex_user@db:5432/brokerdex_db
+      - REDIS_URL=redis://redis:6379/0
+      - DJANGO_SETTINGS_MODULE=brokerdex.settings.local
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - .:/app
+      - /app/.venv
+
+  bots:
+    build: .
+    container_name: brokerdex_bots
+    command: uv run python manage.py bots --stream --interval 2.5
+    environment:
+      - DATABASE_URL=postgresql://brokerdex_user@db:5432/brokerdex_db
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_CACHE_URL=redis://redis:6379/1
+      - DJANGO_SETTINGS_MODULE=brokerdex.settings.local
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - .:/app
+      - /app/.venv
+    profiles: ["bots", "simulation"]
+
 volumes:
   postgres_data:
   redis_data:

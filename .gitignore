@@ -1,4 +1,5 @@
 **/__pycache__/
+.ipynb_checkpoints/
 reset_migration.sh
 celerybeat*
 dump.rdb

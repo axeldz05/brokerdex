@@ -29,3 +29,13 @@ dependencies = [
 plugins = ["mypy_django_plugin.main"]
 [tool.django-stubs]
 django_settings_module = "brokerdex.settings"
+
+[dependency-groups]
+analytics = [
+    "jupyterlab>=4.3.0",
+    "matplotlib>=3.10.0",
+    "pandas>=2.2.0",
+    "plotly>=6.0.0",
+    "seaborn>=0.13.0",
+    "sqlalchemy>=2.0.30",
+]
