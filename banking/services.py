@@ -321,9 +321,20 @@ class WithdrawalService:
     def _record_uncertain_failure(cls, transfer_id, error):
         from .models import Transfer
 
+        max_attempts = getattr(settings, 'MAX_WITHDRAWAL_ATTEMPTS', 5)
         with transaction.atomic():
             transfer = Transfer.objects.select_for_update().get(pk=transfer_id)
             if transfer.status == Transfer.TransactionStatus.PROCESSING:
+                if transfer.provider_attempts >= max_attempts:
+                    logger.critical(
+                        "Withdrawal %s reached max attempts (%s). Marking as failed and refunding.",
+                        transfer_id,
+                        max_attempts,
+                    )
+                    return cls._mark_failed_and_refund(
+                        transfer_id,
+                        f"External bank unavailable after {transfer.provider_attempts} attempts: {error}",
+                    )
                 transfer.status = Transfer.TransactionStatus.PENDING
                 transfer.provider_error = str(error)
                 transfer.save(update_fields=['status', 'provider_error'])

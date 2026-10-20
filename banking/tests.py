@@ -316,6 +316,28 @@ class ExternalWithdrawalSafetyTests(TransactionTestCase):
             Transfer.TransactionStatus.COMPLETED,
         )
 
+    @patch('banking.services.ExternalBankService')
+    def test_withdrawal_fails_and_refunds_when_max_attempts_exceeded(self, bank_class):
+        bank = bank_class.return_value
+        bank.send_money.side_effect = TimeoutError('provider timeout')
+        transfer = Transfer.objects.process_external_withdrawal(
+            sender=self.account,
+            target_cvu='SAFE_DESTINATION',
+            amount=5_000,
+        )
+        self.account.refresh_from_db()
+        balance_after_init = self.account.balance_cents
+
+        Transfer.objects.filter(pk=transfer.pk).update(
+            provider_attempts=4,  # will become 5 on next attempt
+            status=Transfer.TransactionStatus.PENDING,
+        )
+        WithdrawalService.recover_pending(bank_service=bank)
+        transfer.refresh_from_db()
+        self.account.refresh_from_db()
+        self.assertEqual(transfer.status, Transfer.TransactionStatus.FAILED)
+        self.assertEqual(self.account.balance_cents, balance_after_init + 5_000)
+
 
 class WithdrawalTaskTests(TestCase):
     @patch('banking.tasks.WithdrawalService.recover_pending')
