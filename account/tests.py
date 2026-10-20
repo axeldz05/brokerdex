@@ -336,6 +336,57 @@ class AccountAuthenticationHTTPTests(TestCase):
         with self.assertNumQueries(2):
             self.assertEqual(account.balance_audit, 3000)
 
+    def test_registration_rejects_username_with_at_sign(self):
+        from .forms import AccountRegistrationForm
+        form = AccountRegistrationForm(data={
+            "username": "user@evil.com",
+            "email": "user@evil.com",
+            "password1": "StrongPass123!",
+            "password2": "StrongPass123!",
+        })
+        self.assertFalse(form.is_valid())
+        self.assertIn("username", form.errors)
+        self.assertIn("cannot contain the '@' character", form.errors["username"][0])
+
+    def test_registration_rejects_username_colliding_with_existing_email(self):
+        from .forms import AccountRegistrationForm
+        Account.objects.create_user(
+            username="legituser",
+            email="target@example.com",
+            password="StrongPassword1!",
+        )
+        form = AccountRegistrationForm(data={
+            "username": "target@example.com",
+            "email": "other@example.com",
+            "password1": "StrongPass123!",
+            "password2": "StrongPass123!",
+        })
+        self.assertFalse(form.is_valid())
+        self.assertIn("username", form.errors)
+
+    def test_authentication_backend_disambiguates_email_and_username(self):
+        from .backends import EmailOrUsernameModelBackend
+        backend = EmailOrUsernameModelBackend()
+        user1 = Account.objects.create_user(
+            username="victim",
+            email="victim@example.com",
+            password="VictimPassword123!",
+        )
+        user2 = Account.objects.create_user(
+            username="victim@example.com",
+            email="attacker@example.com",
+            password="AttackerPassword123!",
+        )
+        auth_user1 = backend.authenticate(
+            None, username="victim@example.com", password="VictimPassword123!"
+        )
+        self.assertEqual(auth_user1, user1)
+
+        auth_user2 = backend.authenticate(
+            None, username="victim@example.com", password="AttackerPassword123!"
+        )
+        self.assertEqual(auth_user2, user2)
+
 
 class AccountIdentifierConcurrencyTests(TransactionTestCase):
     def test_concurrent_create_user_retries_database_collision(self):

@@ -9,19 +9,21 @@ class EmailOrUsernameModelBackend(ModelBackend):
 
         if username is None:
             username = kwargs.get(UserModel.USERNAME_FIELD)
+        if not username:
+            return None
 
-        try:
-            user = UserModel._default_manager.get(
+        candidates = list(
+            UserModel._default_manager.filter(
                 Q(email__iexact=username) | Q(username=username)
             )
-        except (
-            UserModel.DoesNotExist,
-            UserModel.MultipleObjectsReturned,
-        ):
+        )
+
+        if not candidates:
             UserModel().set_password(password)
             return None
 
-        if user.check_password(password) and self.user_can_authenticate(user):
-            return user
+        for user in candidates:
+            if user.check_password(password) and self.user_can_authenticate(user):
+                return user
 
         return None
