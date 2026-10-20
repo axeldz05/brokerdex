@@ -202,6 +202,11 @@ def deposit_webhook(request):
                 {"status": "error", "code": code},
                 status=404,
             )
+        if code == "conflicting_reference":
+            return JsonResponse(
+                {"status": "error", "code": "conflicting_reference"},
+                status=409,
+            )
         return JsonResponse(
             {"status": "error", "code": "invalid_payload"},
             status=400,
