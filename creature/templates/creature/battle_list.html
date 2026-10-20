@@ -148,7 +148,11 @@ function updateCountdowns() {
     document.querySelectorAll('.battle-countdown').forEach(function(el) {
         const nextTurn = new Date(el.dataset.nextTurn).getTime();
         const now = new Date().getTime();
-        const diff = Math.max(0, nextTurn - now);
+        const diff = nextTurn - now;
+        if (diff <= 0) {
+            el.textContent = 'Resolving...';
+            return;
+        }
         const minutes = Math.floor(diff / 60000);
         const seconds = Math.floor((diff % 60000) / 1000);
         el.textContent = minutes + 'm ' + seconds + 's';

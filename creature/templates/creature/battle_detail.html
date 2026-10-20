@@ -210,12 +210,23 @@
 {% block extra_js %}
 <script>
 // Countdown timer for next turn
+let reloaded = false;
 function updateCountdown() {
     var el = document.querySelector('.battle-countdown');
     if (!el) return;
     var nextTurn = new Date(el.dataset.nextTurn).getTime();
     var now = new Date().getTime();
-    var diff = Math.max(0, nextTurn - now);
+    var diff = nextTurn - now;
+    if (diff <= 0) {
+        el.textContent = 'Resolving turn...';
+        if (!reloaded) {
+            reloaded = true;
+            setTimeout(function() {
+                window.location.reload();
+            }, 3500);
+        }
+        return;
+    }
     var minutes = Math.floor(diff / 60000);
     var seconds = Math.floor((diff % 60000) / 1000);
     el.textContent = minutes + 'm ' + seconds + 's';
