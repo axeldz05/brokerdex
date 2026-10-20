@@ -736,6 +736,9 @@ class BattleService:
                 direction = "won" if is_winner else "lost"
                 emoji = "🏆" if is_winner else "💔"
 
+            opponent = next((other for other in participants if other.pk != p.pk), None)
+            opponent_name = opponent.creature.name if opponent else "Unknown"
+
             notifications = []
             for entry in holders:
                 notifications.append(Notification(
@@ -744,7 +747,7 @@ class BattleService:
                     title=f"{emoji} {p.creature.name} {direction} the battle!",
                     message=(
                         f"{p.creature.name} {direction} against "
-                        f"{battle.participants.exclude(pk=p.pk).first().creature.name}. "
+                        f"{opponent_name}. "
                         f"Winner: {winner_name}."
                     ),
                     related_creature=p.creature,
