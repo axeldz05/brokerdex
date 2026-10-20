@@ -540,6 +540,15 @@ class BattleViewIntegrationTests(TestCase):
         self.assertIn('participants', data)
         self.assertIn('actions', data)
 
+    def test_battle_detail_missing_ajax_returns_404_json(self):
+        self._login()
+        response = self.client.get(
+            reverse('creature:battle_detail', args=[99999]),
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json(), {'error': 'Battle not found.'})
+
     def test_creature_battle_history_requires_login(self):
         response = self.client.get(
             reverse('creature:creature_battle_history', args=[self.creature_1.pk])
