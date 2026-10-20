@@ -292,6 +292,50 @@ class AccountAuthenticationHTTPTests(TestCase):
         self.assertIn("cvu", admin_instance.readonly_fields)
         self.assertIn("alias", admin_instance.readonly_fields)
 
+    def test_balance_audit_aggregates_only_completed_transfers(self):
+        from banking.models import Transfer
+        account = Account.objects.create_user(
+            username="audit_user",
+            email="audit@example.com",
+            password="testpass123",
+        )
+        other = Account.objects.create_user(
+            username="other_audit",
+            email="other_audit@example.com",
+            password="testpass123",
+        )
+        Transfer.objects.create(
+            sender=other,
+            receiver=account,
+            amount=5000,
+            status=Transfer.TransactionStatus.COMPLETED,
+            type=Transfer.TransactionType.TRANSFER,
+        )
+        Transfer.objects.create(
+            sender=account,
+            receiver=other,
+            amount=2000,
+            status=Transfer.TransactionStatus.COMPLETED,
+            type=Transfer.TransactionType.TRANSFER,
+        )
+        Transfer.objects.create(
+            sender=other,
+            receiver=account,
+            amount=10000,
+            status=Transfer.TransactionStatus.PENDING,
+            type=Transfer.TransactionType.TRANSFER,
+        )
+        Transfer.objects.create(
+            sender=account,
+            receiver=other,
+            amount=3000,
+            status=Transfer.TransactionStatus.FAILED,
+            type=Transfer.TransactionType.TRANSFER,
+        )
+
+        with self.assertNumQueries(2):
+            self.assertEqual(account.balance_audit, 3000)
+
 
 class AccountIdentifierConcurrencyTests(TransactionTestCase):
     def test_concurrent_create_user_retries_database_collision(self):
