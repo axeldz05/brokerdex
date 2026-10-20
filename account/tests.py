@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.apps import apps
+from django.conf import settings
 from django.db import IntegrityError, close_old_connections, connection
 from django.test import (
     SimpleTestCase,
@@ -274,6 +275,10 @@ class AccountAuthenticationHTTPTests(TestCase):
         self.assertEqual(
             reverse("account:register"),
             "/account/register/",
+        )
+        self.assertEqual(
+            settings.LOGIN_URL,
+            "/account/login/",
         )
 
 
