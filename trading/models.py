@@ -257,7 +257,7 @@ class Trade(models.Model):
     )
     creature = models.ForeignKey(
         Creature,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name='trades'
     )
     buy_order = models.ForeignKey(
