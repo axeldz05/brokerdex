@@ -6,6 +6,7 @@ from django.db.models import Q
 
 from account.money import cents_to_dollars
 from banking.models import Transfer
+from creature.models import Incubation, TrainingSession
 from trading.models import Trade
 
 
@@ -86,6 +87,38 @@ def _trade_entries(trade, user):
         )
 
 
+def _incubation_entries(incubation):
+    price = incubation.egg_template.price
+    egg_name = incubation.egg_template.name
+    yield LedgerEntry(
+        incubation.purchased_at,
+        f'Egg incubation: {egg_name}',
+        -price,
+    )
+    if incubation.status == Incubation.Status.FAILED and incubation.refunded_at:
+        yield LedgerEntry(
+            incubation.refunded_at,
+            f'Egg incubation refund: {egg_name}',
+            price,
+        )
+
+
+def _training_entries(session):
+    cost = cents_to_dollars(session.cost_cents)
+    creature_name = session.creature.name
+    yield LedgerEntry(
+        session.created_at,
+        f'Training: {creature_name}',
+        -cost,
+    )
+    if session.status == TrainingSession.Status.FAILED and session.refunded_at:
+        yield LedgerEntry(
+            session.refunded_at,
+            f'Training refund: {creature_name}',
+            cost,
+        )
+
+
 def build_dashboard_ledger(user):
     """Build signed presentation entries from persisted cash-flow facts."""
     transfers = Transfer.objects.filter(
@@ -95,6 +128,12 @@ def build_dashboard_ledger(user):
     trades = Trade.objects.filter(
         Q(buyer=user) | Q(seller=user)
     ).select_related('buyer', 'seller', 'creature')
+    incubations = Incubation.objects.filter(
+        user=user
+    ).select_related('egg_template')
+    trainings = TrainingSession.objects.filter(
+        user=user
+    ).select_related('creature')
 
     entries = [
         entry
@@ -103,6 +142,11 @@ def build_dashboard_ledger(user):
     ]
     for trade in trades:
         entries.extend(_trade_entries(trade, user))
+    for incubation in incubations:
+        entries.extend(_incubation_entries(incubation))
+    for training in trainings:
+        entries.extend(_training_entries(training))
+
     return sorted(
         entries,
         key=lambda entry: entry.occurred_at,

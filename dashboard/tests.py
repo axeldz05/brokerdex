@@ -278,3 +278,57 @@ class DashboardLedgerTestCase(TestCase):
             response,
             response.context['expenses_data'][0]['period'],
         )
+
+    def test_ledger_includes_incubation_and_training_sessions(self):
+        from creature.models import EggTemplate, Incubation, TrainingSession
+        egg = EggTemplate.objects.create(
+            name="Dragon Egg",
+            price=Decimal("50.00"),
+            hatch_duration=timezone.timedelta(hours=1),
+        )
+        inc = Incubation.objects.create(
+            user=self.user,
+            egg_template=egg,
+            hatches_at=timezone.now() + timezone.timedelta(hours=1),
+        )
+        session = TrainingSession.objects.create(
+            user=self.user,
+            creature=self.creature,
+            cost_cents=1000,
+            execute_at=timezone.now() + timezone.timedelta(seconds=30),
+        )
+
+        ledger = build_dashboard_ledger(self.user)
+        labels = [entry.label for entry in ledger]
+        self.assertIn("Egg incubation: Dragon Egg", labels)
+        self.assertIn(f"Training: {self.creature.name}", labels)
+
+        accounting = compute_income_expenses(self.user)
+        self.assertEqual(accounting["total_expenses"], Decimal("60.00"))
+        self.assertEqual(accounting["net_flow"], Decimal("-60.00"))
+
+        ledger_net = sum(
+            (entry.amount for entry in build_dashboard_ledger(self.user)),
+            Decimal('0'),
+        )
+        self.assertEqual(ledger_net, accounting["net_flow"])
+
+        # Test refund
+        inc.status = Incubation.Status.FAILED
+        inc.refunded_at = timezone.now()
+        inc.save(update_fields=['status', 'refunded_at'])
+
+        ledger_refunded = build_dashboard_ledger(self.user)
+        refund_labels = [entry.label for entry in ledger_refunded]
+        self.assertIn("Egg incubation refund: Dragon Egg", refund_labels)
+
+        accounting_refunded = compute_income_expenses(self.user)
+        self.assertEqual(accounting_refunded["total_income"], Decimal("50.00"))
+        self.assertEqual(accounting_refunded["total_expenses"], Decimal("60.00"))
+        self.assertEqual(accounting_refunded["net_flow"], Decimal("-10.00"))
+
+        ledger_net_refunded = sum(
+            (entry.amount for entry in ledger_refunded),
+            Decimal('0'),
+        )
+        self.assertEqual(ledger_net_refunded, accounting_refunded["net_flow"])
