@@ -117,6 +117,13 @@ class IncubationService:
             )
             if incubation.status != Incubation.Status.INCUBATING:
                 return False
+            max_attempts = getattr(settings, 'MAX_SCHEDULING_ATTEMPTS', 5)
+            if incubation.scheduling_attempts >= max_attempts:
+                cls.fail_hatch(
+                    incubation.pk,
+                    f"Scheduling exceeded max attempts ({max_attempts})",
+                )
+                return False
             incubation.scheduling_attempts += 1
             incubation.last_scheduling_attempt_at = now
             incubation.save(update_fields=[
@@ -1038,6 +1045,13 @@ class TrainingService:
                 pk=session_id
             )
             if session.status != TrainingSession.Status.PENDING:
+                return False
+            max_attempts = getattr(settings, 'MAX_SCHEDULING_ATTEMPTS', 5)
+            if session.scheduling_attempts >= max_attempts:
+                cls.fail_training(
+                    session.pk,
+                    f"Scheduling exceeded max attempts ({max_attempts})",
+                )
                 return False
             session.scheduling_attempts += 1
             session.last_scheduling_attempt_at = now

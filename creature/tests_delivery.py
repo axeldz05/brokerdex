@@ -184,6 +184,49 @@ class SchedulingDeliveryTests(DeliveryFixtureMixin, TransactionTestCase):
         self.assertEqual(session.scheduling_attempts, 1)
         self.assertIn('broker unavailable', session.scheduling_error)
 
+    def test_incubation_refunds_when_scheduling_attempts_exceed_max(self):
+        user = self.make_user()
+        creature = self.make_creature()
+        egg = self.make_egg(creature)
+        incubation = IncubationService.purchase_egg(user, egg)
+        user.refresh_from_db()
+        balance_after_purchase = user.balance_cents
+
+        Incubation.objects.filter(pk=incubation.pk).update(scheduling_attempts=5)
+        result = IncubationService.schedule_hatch(incubation.pk)
+        self.assertFalse(result)
+
+        incubation.refresh_from_db()
+        user.refresh_from_db()
+        self.assertEqual(incubation.status, Incubation.Status.FAILED)
+        self.assertIsNotNone(incubation.refunded_at)
+        self.assertEqual(user.balance_cents, balance_after_purchase + 5_000)
+
+    def test_training_refunds_when_scheduling_attempts_exceed_max(self):
+        user = self.make_user()
+        creature = self.make_creature()
+        portfolio = Portfolio.objects.create(
+            owner=user,
+            creature=creature,
+            quantity=Decimal('1'),
+            average_cost=creature.current_price,
+        )
+        session = TrainingService.train_creature(user, creature, portfolio)
+        user.refresh_from_db()
+        balance_after_training = user.balance_cents
+
+        TrainingSession.objects.filter(pk=session.pk).update(scheduling_attempts=5)
+        result = TrainingService.schedule_training(session.pk)
+        self.assertFalse(result)
+
+        session.refresh_from_db()
+        user.refresh_from_db()
+        self.assertEqual(session.status, TrainingSession.Status.FAILED)
+        self.assertIsNotNone(session.refunded_at)
+        self.assertEqual(
+            user.balance_cents, balance_after_training + session.cost_cents
+        )
+
 
 class IncubationIdempotencyTests(DeliveryFixtureMixin, TestCase):
     def test_empty_egg_pool_is_rejected_before_debit(self):
