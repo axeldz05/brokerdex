@@ -213,6 +213,33 @@ class AccountAuthenticationHTTPTests(TestCase):
             "No account found",
         )
 
+    def test_register_username_max_length_validation(self):
+        from .forms import AccountRegistrationForm
+        form = AccountRegistrationForm(data={
+            "username": "a" * 21,
+            "email": "toolong@example.com",
+            "password1": "RegistrationPass123!",
+            "password2": "RegistrationPass123!",
+        })
+        self.assertFalse(form.is_valid())
+        self.assertIn("username", form.errors)
+
+    def test_register_case_insensitive_email_validation(self):
+        from .forms import AccountRegistrationForm
+        Account.objects.create_user(
+            username="existinguser",
+            email="TestUser@example.com",
+            password="testpass123",
+        )
+        form = AccountRegistrationForm(data={
+            "username": "newuser",
+            "email": "testuser@example.com",
+            "password1": "RegistrationPass123!",
+            "password2": "RegistrationPass123!",
+        })
+        self.assertFalse(form.is_valid())
+        self.assertIn("email", form.errors)
+
     def test_register_assigns_identifiers_and_authenticates_account(self):
         response = self.client.post(
             reverse("account:register"),
