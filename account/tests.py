@@ -281,6 +281,17 @@ class AccountAuthenticationHTTPTests(TestCase):
             "/account/login/",
         )
 
+    def test_account_admin_registered_as_user_admin(self):
+        from django.contrib import admin
+        from django.contrib.auth.admin import UserAdmin
+        from .admin import AccountAdmin
+        admin_instance = admin.site._registry.get(Account)
+        self.assertIsInstance(admin_instance, AccountAdmin)
+        self.assertIsInstance(admin_instance, UserAdmin)
+        self.assertIn("balance_cents", admin_instance.list_display)
+        self.assertIn("cvu", admin_instance.readonly_fields)
+        self.assertIn("alias", admin_instance.readonly_fields)
+
 
 class AccountIdentifierConcurrencyTests(TransactionTestCase):
     def test_concurrent_create_user_retries_database_collision(self):
