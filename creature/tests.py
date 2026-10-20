@@ -26,6 +26,21 @@ class CreatureAndBattleTests(TestCase):
         url = self.charmander.get_absolute_url()
         self.assertEqual(url, f"/trading/creature/{self.charmander.id}/")
 
+    def test_creature_ability_methods(self):
+        self.charmander.abilities.add(self.scratch)
+        qs = self.charmander.get_abilities_queryset()
+        self.assertIn(self.scratch, qs)
+
+        # Remove by ID
+        self.charmander.remove_ability(self.scratch.id)
+        self.assertFalse(self.charmander.abilities.filter(id=self.scratch.id).exists())
+
+        # Add and remove by instance
+        self.charmander.add_ability(self.ember)
+        self.assertTrue(self.charmander.abilities.filter(id=self.ember.id).exists())
+        self.charmander.remove_ability(self.ember)
+        self.assertFalse(self.charmander.abilities.filter(id=self.ember.id).exists())
+
     def test_creature_can_have_up_to_4_abilities(self):
         self.charmander.abilities.add(self.scratch)
         self.charmander.abilities.add(self.ember)

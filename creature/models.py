@@ -111,21 +111,23 @@ class Creature(models.Model):
         ordering = ['name']
 
     def get_abilities_queryset(self):
-       """Get the actual Ability objects from the stored IDs"""
-       return Ability.objects.filter(id__in=self.abilities)
+        """Get the actual Ability objects associated with this creature"""
+        return self.abilities.all()
     
     def add_ability(self, ability):
         if not self.pk:
             raise ValidationError("You must save the creature before adding abilities.")
         if self.abilities.count() >= 4:
             raise ValidationError("Cannot add more than 4 abilities")
-        if self.abilities.filter(id=ability.id).exists():
+        ability_id = getattr(ability, 'pk', ability)
+        if self.abilities.filter(pk=ability_id).exists():
             raise ValidationError("Ability already exists on this creature")
         self.abilities.add(ability)    
 
-    def remove_ability(self, ability_id):
-        if ability_id in self.abilities:
-            self.abilities.remove(ability_id)
+    def remove_ability(self, ability):
+        ability_id = getattr(ability, 'pk', ability)
+        if self.abilities.filter(pk=ability_id).exists():
+            self.abilities.remove(ability)
 
     def __str__(self):
         types = f"{self.type}"
