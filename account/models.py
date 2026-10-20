@@ -49,11 +49,21 @@ class Account(AbstractBaseUser, PermissionsMixin):
 
     @property
     def balance_audit(self):
-        history = self.get_transaction_history()
-        total = 0
-        for t in history:
-            if t.receiver == self:
-                total += t.amount
-            elif t.sender == self:
-                total -= t.amount
-        return total
+        from banking.models import Transfer
+        from django.db.models import Sum
+
+        received = (
+            Transfer.objects.filter(
+                receiver=self,
+                status=Transfer.TransactionStatus.COMPLETED,
+            ).aggregate(total=Sum('amount'))['total']
+            or 0
+        )
+        sent = (
+            Transfer.objects.filter(
+                sender=self,
+                status=Transfer.TransactionStatus.COMPLETED,
+            ).aggregate(total=Sum('amount'))['total']
+            or 0
+        )
+        return received - sent
