@@ -139,6 +139,7 @@
                                 Sales ${{ item.sales|floatformat:0 }}
                                 {% if item.deposits > 0 %} · Deposits ${{ item.deposits|floatformat:0 }}{% endif %}
                                 {% if item.transfers_in > 0 %} · In ${{ item.transfers_in|floatformat:0 }}{% endif %}
+                                {% if item.refunds > 0 %} · Refunds ${{ item.refunds|floatformat:0 }}{% endif %}
                             </small>
                         </div>
                     </div>
@@ -157,6 +158,8 @@
                                 {% if item.withdrawals > 0 %} · Withdrawals ${{ item.withdrawals|floatformat:0 }}{% endif %}
                                 {% if item.transfers_out > 0 %} · Out ${{ item.transfers_out|floatformat:0 }}{% endif %}
                                 {% if item.commissions > 0 %} · Commissions ${{ item.commissions|floatformat:0 }}{% endif %}
+                                {% if item.incubations > 0 %} · Eggs ${{ item.incubations|floatformat:0 }}{% endif %}
+                                {% if item.training > 0 %} · Training ${{ item.training|floatformat:0 }}{% endif %}
                             </small>
                         </div>
                     </div>

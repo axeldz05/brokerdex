@@ -7,6 +7,7 @@ from django.utils import timezone
 
 from account.money import cents_to_dollars
 from banking.models import Transfer
+from creature.models import Incubation, TrainingSession
 
 from .models import Trade
 
@@ -69,6 +70,7 @@ def compute_income_expenses(user, period='monthly'):
             'sales': Decimal('0'),
             'deposits': Decimal('0'),
             'transfers_in': Decimal('0'),
+            'refunds': Decimal('0'),
         }
     )
     expenses_by_period = defaultdict(
@@ -77,6 +79,8 @@ def compute_income_expenses(user, period='monthly'):
             'withdrawals': Decimal('0'),
             'transfers_out': Decimal('0'),
             'commissions': Decimal('0'),
+            'incubations': Decimal('0'),
+            'training': Decimal('0'),
         }
     )
 
@@ -114,6 +118,25 @@ def compute_income_expenses(user, period='monthly'):
                 income_by_period[key]['transfers_in'] += amount
             elif transfer.sender_id == user.pk:
                 expenses_by_period[key]['transfers_out'] += amount
+
+    incubations = Incubation.objects.filter(
+        user=user
+    ).select_related('egg_template')
+    for inc in incubations:
+        key = key_for(_local_naive(inc.purchased_at))
+        expenses_by_period[key]['incubations'] += inc.egg_template.price
+        if inc.status == Incubation.Status.FAILED and inc.refunded_at:
+            refund_key = key_for(_local_naive(inc.refunded_at))
+            income_by_period[refund_key]['refunds'] += inc.egg_template.price
+
+    trainings = TrainingSession.objects.filter(user=user)
+    for session in trainings:
+        cost = cents_to_dollars(session.cost_cents)
+        key = key_for(_local_naive(session.created_at))
+        expenses_by_period[key]['training'] += cost
+        if session.status == TrainingSession.Status.FAILED and session.refunded_at:
+            refund_key = key_for(_local_naive(session.refunded_at))
+            income_by_period[refund_key]['refunds'] += cost
 
     keys = sorted(set(income_by_period) | set(expenses_by_period))
     if period == 'monthly':
