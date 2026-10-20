@@ -705,3 +705,16 @@ class ModelValidationTestCase(TestCase):
             widget_attrs = form.fields['quantity'].widget.attrs
             self.assertEqual(widget_attrs.get('step'), 'any')
             self.assertEqual(Decimal(widget_attrs.get('min')), Decimal('0.00000001'))
+
+    def test_trade_creature_protect_on_delete(self):
+        """Historical trades must be protected from deletion if creature is deleted."""
+        from django.db.models import ProtectedError
+        Trade.objects.create(
+            buyer=self.account,
+            creature=self.creature,
+            quantity=Decimal('1.00000000'),
+            price_per_unit=Decimal('50.00'),
+            commission=Decimal('0.75'),
+        )
+        with self.assertRaises(ProtectedError):
+            self.creature.delete()
