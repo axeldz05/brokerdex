@@ -578,6 +578,19 @@ class PricingEngineTestCase(TestCase):
         price = PricingEngine.calculate_price(self.creature)
         self.assertGreaterEqual(price, Decimal('0.01'))
 
+    def test_seed_all_adjusts_reference_price_for_rarity(self):
+        from django.core.management import call_command
+        call_command('seed_all', clear=True)
+        rayquaza = Creature.objects.get(name='Rayquaza')
+        self.assertEqual(rayquaza.current_price, Decimal('3000.00'))
+        self.assertEqual(rayquaza.pricing_reference_price, Decimal('2000.00'))
+        self.assertEqual(PricingEngine.calculate_price(rayquaza), Decimal('3000.00'))
+
+        mew = Creature.objects.get(name='Mew')
+        self.assertEqual(mew.current_price, Decimal('5000.00'))
+        self.assertEqual(mew.pricing_reference_price, Decimal('2500.00'))
+        self.assertEqual(PricingEngine.calculate_price(mew), Decimal('5000.00'))
+
     def test_update_creature_price_persists(self):
         old_price = self.creature.current_price
         new_price = PricingEngine.update_creature_price(self.creature)
