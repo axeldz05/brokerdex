@@ -111,11 +111,18 @@ class AccountRegistrationForm(UserCreationForm):
         email = self.cleaned_data.get('email')
         if Account.objects.filter(email__iexact=email).exists():
             raise ValidationError("An account with this email already exists.")
+        if Account.objects.filter(username__iexact=email).exists():
+            raise ValidationError("This email is already taken as a username.")
         return email
+
     def clean_username(self):
         username = self.cleaned_data.get('username')
+        if '@' in username:
+            raise ValidationError("Username cannot contain the '@' character.")
         if Account.objects.filter(username=username).exists():
             raise ValidationError("An account with this username already exists.")
+        if Account.objects.filter(email__iexact=username).exists():
+            raise ValidationError("This username is already registered as an email.")
         return username
 
     def save(self, commit=True):
