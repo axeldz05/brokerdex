@@ -91,6 +91,38 @@ class DepositWebhookTests(TestCase):
             Transfer.TransactionStatus.COMPLETED,
         )
 
+    def test_duplicate_webhook_with_conflicting_amount_is_rejected(self):
+        first_response = self._post(self._payload(amount_cents=2500))
+        self.assertEqual(first_response.status_code, 200)
+
+        # Conflicting amount with same provider reference
+        second_response = self._post(self._payload(amount_cents=5000))
+        self.assertEqual(second_response.status_code, 409)
+        self.assertEqual(
+            second_response.json(),
+            {"status": "error", "code": "conflicting_reference"},
+        )
+        self.account.refresh_from_db()
+        self.assertEqual(self.account.balance_cents, 2500)
+
+    def test_duplicate_webhook_with_conflicting_target_is_rejected(self):
+        first_response = self._post(self._payload(target_identifier=self.account.cvu))
+        self.assertEqual(first_response.status_code, 200)
+
+        other_account = Account.objects.create_user(
+            username="otheruser",
+            email="other@example.com",
+            password="secretpassword",
+        )
+        second_response = self._post(
+            self._payload(target_identifier=other_account.cvu)
+        )
+        self.assertEqual(second_response.status_code, 409)
+        self.assertEqual(
+            second_response.json(),
+            {"status": "error", "code": "conflicting_reference"},
+        )
+
     def test_unknown_cvu_returns_stable_error_without_creating_transfer(self):
         response = self._post(
             self._payload(target_identifier="unknown-cvu")

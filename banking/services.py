@@ -1,3 +1,5 @@
+import logging
+
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
@@ -5,6 +7,8 @@ from django.db.models import Q
 from django.utils import timezone
 
 from account.models import Account
+
+logger = logging.getLogger(__name__)
 
 
 class DepositService:
@@ -39,6 +43,9 @@ class DepositService:
                     for_update=True,
                 )
                 if existing:
+                    cls._validate_existing_match(
+                        existing, amount_cents, target_identifier
+                    )
                     return existing
 
                 account_field = cls.IDENTIFIER_FIELDS[identifier_type]
@@ -57,6 +64,9 @@ class DepositService:
                     for_update=True,
                 )
                 if existing:
+                    cls._validate_existing_match(
+                        existing, amount_cents, target_identifier
+                    )
                     return existing
 
                 transfer = Transfer.objects.create(
@@ -78,8 +88,31 @@ class DepositService:
                 provider_reference,
             )
             if existing:
+                cls._validate_existing_match(
+                    existing, amount_cents, target_identifier
+                )
                 return existing
             raise
+
+    @classmethod
+    def _validate_existing_match(cls, existing, amount_cents, target_identifier):
+        if (
+            existing.amount != amount_cents
+            or existing.target_identifier != target_identifier
+        ):
+            logger.critical(
+                "Conflicting duplicate deposit for reference %s: "
+                "existing(amount=%s, target=%s) vs incoming(amount=%s, target=%s)",
+                existing.provider_reference,
+                existing.amount,
+                existing.target_identifier,
+                amount_cents,
+                target_identifier,
+            )
+            raise ValidationError(
+                "Payload conflicts with existing provider reference.",
+                code="conflicting_reference",
+            )
 
     @staticmethod
     def _find_existing(
