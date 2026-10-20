@@ -77,6 +77,19 @@ class TransferTestCase(TestCase):
                 pk=account2.pk).balance_cents,
             30000)
 
+    def test_non_positive_transfer_amount_raises_integrity_error(self):
+        from django.db import IntegrityError
+        account1 = Account.objects.get(username="account1")
+        account2 = Account.objects.get(username="account2")
+        with self.assertRaises(IntegrityError):
+            Transfer.objects.create(
+                sender=account1,
+                receiver=account2,
+                amount=0,
+                type=Transfer.TransactionType.TRANSFER,
+                status=Transfer.TransactionStatus.PENDING,
+            )
+
     def test_04_can_not_transfer_between_same_accounts(self):
         account2 = Account.objects.get(username="account2")
         try:

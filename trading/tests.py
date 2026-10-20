@@ -45,6 +45,15 @@ class TradingEngineTestCase(TestCase):
         )
         self.creature.abilities.add(self.ability)
 
+    def test_negative_portfolio_quantity_raises_integrity_error(self):
+        from django.db import IntegrityError
+        with self.assertRaises(IntegrityError):
+            Portfolio.objects.create(
+                owner=self.buyer,
+                creature=self.creature,
+                quantity=Decimal('-1.0'),
+            )
+
     def test_market_buy_deducts_balance_and_creates_portfolio(self):
         trade = TradingEngine.execute_market_buy(
             self.buyer, self.creature, Decimal('2')
