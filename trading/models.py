@@ -6,6 +6,7 @@ from django.core.validators import MinValueValidator
 from django.db import models
 
 from account.models import Account
+from account.money import quantize_money
 from creature.models import Creature
 
 
@@ -301,7 +302,7 @@ class Trade(models.Model):
     @property
     def total_amount(self):
         """Derived: quantity × price_per_unit. Not stored (3NF)."""
-        return self.quantity * self.price_per_unit
+        return quantize_money(self.quantity * self.price_per_unit)
 
     def __str__(self):
         return (
