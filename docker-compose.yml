@@ -1,0 +1,117 @@
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: brokerdex_postgres
+    environment:
+      POSTGRES_USER: brokerdex_user
+      POSTGRES_DB: brokerdex_db
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U brokerdex_user -d brokerdex_db"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:alpine
+    container_name: brokerdex_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+
+  migrate:
+    build: .
+    container_name: brokerdex_migrate
+    command: bash /app/scripts/init_dev.sh
+    environment:
+      - DATABASE_URL=postgresql://brokerdex_user@db:5432/brokerdex_db
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_CACHE_URL=redis://redis:6379/1
+      - DJANGO_SETTINGS_MODULE=brokerdex.settings.local
+      - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,web
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - .:/app
+      - /app/.venv
+
+  web:
+    build: .
+    container_name: brokerdex_web
+    command: uv run python manage.py runserver 0.0.0.0:8000
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://brokerdex_user@db:5432/brokerdex_db
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_CACHE_URL=redis://redis:6379/1
+      - DJANGO_SETTINGS_MODULE=brokerdex.settings.local
+      - DJANGO_DEBUG=True
+      - DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0,web,[::1]
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - .:/app
+      - /app/.venv
+
+  worker:
+    build: .
+    container_name: brokerdex_worker
+    command: uv run celery -A brokerdex worker --loglevel=info
+    environment:
+      - DATABASE_URL=postgresql://brokerdex_user@db:5432/brokerdex_db
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_CACHE_URL=redis://redis:6379/1
+      - DJANGO_SETTINGS_MODULE=brokerdex.settings.local
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - .:/app
+      - /app/.venv
+
+  beat:
+    build: .
+    container_name: brokerdex_beat
+    command: uv run celery -A brokerdex beat --loglevel=info
+    environment:
+      - DATABASE_URL=postgresql://brokerdex_user@db:5432/brokerdex_db
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_CACHE_URL=redis://redis:6379/1
+      - DJANGO_SETTINGS_MODULE=brokerdex.settings.local
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - .:/app
+      - /app/.venv
+
+volumes:
+  postgres_data:
+  redis_data:

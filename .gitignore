@@ -1,6 +1,7 @@
 **/__pycache__/
 reset_migration.sh
 celerybeat*
+dump.rdb
 /media/creatures/*
 
 # Local environment and PostgreSQL credentials

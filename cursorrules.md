@@ -68,7 +68,7 @@ uv run python manage.py migrate
 bash run.sh
 ```
 
-`run.sh` no inicia PostgreSQL ni Redis. Mantener una sola instancia de Beat.
+`run.sh` asegura la disponibilidad de PostgreSQL, `brokerdex_db`, Redis, migraciones y Celery antes de iniciar Honcho. Mantener una sola instancia de Beat.
 Para la suite normal se parchea Celery; para el round-trip real usar
 `docs/celery-smoke.md`.
 

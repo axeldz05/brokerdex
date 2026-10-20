@@ -270,8 +270,7 @@ notifica. Un draw no altera la referencia.
   producción.
 - `Procfile.dev` es desarrollo: `runserver`, worker y un Beat con settings
   locales.
-- `run.sh` no crea infraestructura: valida `uv`, Django, PostgreSQL y Redis,
-  evita un Beat duplicado y delega a Honcho con `Procfile.dev`.
+- `run.sh` consolida el entorno de desarrollo: asegura PostgreSQL (servicio/contenedor y creación de `brokerdex_db`), Redis, limpieza de procesos huérfanos de Celery, chequeos, migraciones y seed inicial si la base está vacía, delegando finalmente a Honcho con `Procfile.dev`.
 - WhiteNoise sirve `STATIC_ROOT`; producción requiere ejecutar
   `collectstatic`. No sirve media.
 - `/health/live/` no consulta dependencias. `/health/ready/` consulta

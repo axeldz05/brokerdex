@@ -13,8 +13,18 @@ from django.core.files.base import ContentFile
 
 from account.money import quantize_money
 from account.models import Account
-from creature.models import Creature, Ability, EggTemplate, Battle, BattleParticipant, BattleAction, BattleInvestment
+from creature.models import (
+    Creature,
+    Ability,
+    EggTemplate,
+    Battle,
+    BattleParticipant,
+    BattleAction,
+    BattleInvestment,
+    Incubation,
+)
 from creature.services import BattleService
+from trading.models import PriceHistory, Trade, Portfolio
 
 
 
@@ -72,10 +82,16 @@ class Command(BaseCommand):
             action='store_true',
             help='Also create demo data: users, orders, battles, and incubations.',
         )
+        parser.add_argument(
+            '--simulation',
+            action='store_true',
+            help='Create large-scale simulation population: ~100 users, 30 days of OHLCV history, distributed portfolios, battles, and incubations.',
+        )
 
     def handle(self, *args, **options):
         clear = options.get('clear')
         demo = options.get('demo')
+        simulation = options.get('simulation')
 
         if clear:
             self._clear_data()
@@ -91,6 +107,9 @@ class Command(BaseCommand):
             self._create_demo_incubations()
             self._seed_market_maker()
 
+        if simulation:
+            self._seed_simulation_population()
+
         self.stdout.write(self.style.SUCCESS('Seeding complete!'))
 
     def _clear_data(self):
@@ -102,6 +121,10 @@ class Command(BaseCommand):
         EggTemplate.objects.all().delete()
         Creature.objects.all().delete()
         Ability.objects.all().delete()
+        PriceHistory.objects.all().delete()
+        Trade.objects.all().delete()
+        Portfolio.objects.all().delete()
+        Account.objects.filter(username__startswith='sim_').delete()
 
     def _seed_abilities(self):
         abilities_data = load_json('abilities.json')
@@ -436,3 +459,235 @@ class Command(BaseCommand):
                 ))
 
         self.stdout.write(f"  Demo incubations: {created} started")
+
+    def _seed_simulation_population(self):
+        from django.contrib.auth.hashers import make_password
+        self.stdout.write('Seeding massive simulation population (~100 users, 30d history, battles, portfolios)...')
+        self._seed_market_maker()
+
+        creatures = list(Creature.objects.all())
+        eggs = list(EggTemplate.objects.filter(is_active=True))
+
+        if not creatures:
+            self.stdout.write(self.style.ERROR('No creatures found to seed simulation.'))
+            return
+
+        # 1. Create 100 simulation users with pre-hashed passwords for maximum speed
+        shared_password_hash = make_password('trainer_pass_2026')
+        trainer_names = [
+            "red", "blue", "green", "cynthia", "steven", "lance", "erika", "sabrina", "giovanni",
+            "koga", "blaine", "surge", "whitney", "jasmine", "pryce", "clair", "falkner", "bugsy",
+            "morty", "chuck", "roark", "gardenia", "maylene", "crasher_wake", "fantina", "byron",
+            "candice", "volkner", "alder", "iris", "drasna", "siebold", "wikstrom", "malva",
+            "diantha", "leon", "raihan", "nessa", "bea", "allister", "kabu", "piers", "marnie",
+            "bede", "milo", "gordie", "melony", "opal", "nemona", "arven", "penny", "geeta",
+            "larry", "ryme", "tulip", "grusha", "katy", "brassius", "iono", "kofu"
+        ]
+        while len(trainer_names) < 100:
+            trainer_names.append(f"trainer_{len(trainer_names) + 1:03d}")
+
+        users = []
+        created_count = 0
+        for name in trainer_names:
+            username = f"sim_{name}"
+            email = f"{username}@brokerdex.io"
+            user = get_or_none(Account, username=username)
+            if not user:
+                balance_cents = random.randint(1_000_000, 8_000_000)
+                user = Account.objects.create_user(
+                    username=username,
+                    email=email,
+                    password=None,
+                    balance_cents=balance_cents,
+                )
+                user.password = shared_password_hash
+                user.save(update_fields=['password'])
+                created_count += 1
+            users.append(user)
+
+        self.stdout.write(f"  Simulation Users: {created_count} created, {len(users)} ready")
+
+        # 2. Distribute Portfolios across creatures
+        portfolio_count = 0
+        for user in users:
+            owned_creatures = random.sample(creatures, k=random.randint(2, min(6, len(creatures))))
+            for creature in owned_creatures:
+                qty = quantize_money(Decimal(str(random.uniform(1.0, 10.0))))
+                avg_cost = quantize_money(creature.current_price * Decimal(str(random.uniform(0.9, 1.1))))
+                _, was_created = Portfolio.objects.get_or_create(
+                    owner=user,
+                    creature=creature,
+                    defaults={'quantity': qty, 'average_cost': avg_cost}
+                )
+                if was_created:
+                    portfolio_count += 1
+
+        self.stdout.write(f"  Portfolios: {portfolio_count} creature holdings distributed")
+
+        # 3. Generate 30 days of Historical OHLCV Candles and Trades
+        now = timezone.now().replace(minute=0, second=0, microsecond=0)
+        daily_candles = []
+        hourly_candles = []
+        weekly_candles = []
+        trades = []
+
+        for creature in creatures:
+            base_price = creature.pricing_reference_price or creature.current_price
+            price_walk = base_price
+
+            # Hourly candles (last 720 hours = 30 days)
+            for h in range(720, 0, -1):
+                ts = now - timedelta(hours=h)
+                drift = Decimal(str(random.uniform(-0.02, 0.02)))
+                open_p = quantize_money(max(Decimal('5.00'), price_walk))
+                price_walk = quantize_money(max(Decimal('5.00'), price_walk * (1 + drift)))
+                close_p = price_walk
+                high_p = quantize_money(max(open_p, close_p) * Decimal(str(random.uniform(1.002, 1.015))))
+                low_p = quantize_money(min(open_p, close_p) * Decimal(str(random.uniform(0.985, 0.998))))
+                vol = quantize_money(Decimal(str(random.uniform(2.0, 35.0))))
+
+                hourly_candles.append(PriceHistory(
+                    creature=creature,
+                    interval=PriceHistory.Interval.ONE_HOUR,
+                    open_price=open_p,
+                    high_price=high_p,
+                    low_price=low_p,
+                    close_price=close_p,
+                    volume=vol,
+                    timestamp=ts,
+                ))
+
+            # Daily candles (last 30 days)
+            price_walk = base_price
+            for d in range(30, 0, -1):
+                ts = (now - timedelta(days=d)).replace(hour=0)
+                drift = Decimal(str(random.uniform(-0.04, 0.04)))
+                open_p = quantize_money(max(Decimal('5.00'), price_walk))
+                price_walk = quantize_money(max(Decimal('5.00'), price_walk * (1 + drift)))
+                close_p = price_walk
+                high_p = quantize_money(max(open_p, close_p) * Decimal(str(random.uniform(1.01, 1.05))))
+                low_p = quantize_money(min(open_p, close_p) * Decimal(str(random.uniform(0.95, 0.99))))
+                vol = quantize_money(Decimal(str(random.uniform(40.0, 450.0))))
+
+                daily_candles.append(PriceHistory(
+                    creature=creature,
+                    interval=PriceHistory.Interval.ONE_DAY,
+                    open_price=open_p,
+                    high_price=high_p,
+                    low_price=low_p,
+                    close_price=close_p,
+                    volume=vol,
+                    timestamp=ts,
+                ))
+
+            # Weekly candles (last 4 weeks)
+            for w in range(4, 0, -1):
+                ts = (now - timedelta(weeks=w)).replace(hour=0)
+                open_p = quantize_money(base_price * Decimal(str(random.uniform(0.95, 1.05))))
+                close_p = quantize_money(base_price * Decimal(str(random.uniform(0.95, 1.05))))
+                high_p = quantize_money(max(open_p, close_p) * Decimal('1.06'))
+                low_p = quantize_money(min(open_p, close_p) * Decimal('0.94'))
+                vol = quantize_money(Decimal(str(random.uniform(200.0, 1500.0))))
+
+                weekly_candles.append(PriceHistory(
+                    creature=creature,
+                    interval=PriceHistory.Interval.ONE_WEEK,
+                    open_price=open_p,
+                    high_price=high_p,
+                    low_price=low_p,
+                    close_price=close_p,
+                    volume=vol,
+                    timestamp=ts,
+                ))
+
+            # Generate historical trades
+            for _ in range(15):
+                buyer, seller = random.sample(users, 2)
+                t_price = quantize_money(base_price * Decimal(str(random.uniform(0.92, 1.08))))
+                t_qty = quantize_money(Decimal(str(random.uniform(0.5, 4.0))))
+                t_subtotal = t_price * t_qty
+                t_comm = quantize_money(t_subtotal * Trade.COMMISSION_RATE)
+                t_date = now - timedelta(hours=random.randint(1, 700))
+
+                trade = Trade(
+                    buyer=buyer,
+                    seller=seller,
+                    creature=creature,
+                    price_per_unit=t_price,
+                    quantity=t_qty,
+                    commission=t_comm,
+                    realized_cost_basis=quantize_money(t_subtotal * Decimal('0.95')),
+                    executed_at=t_date,
+                )
+                trades.append(trade)
+
+        PriceHistory.objects.bulk_create(daily_candles, ignore_conflicts=True)
+        PriceHistory.objects.bulk_create(hourly_candles, ignore_conflicts=True)
+        PriceHistory.objects.bulk_create(weekly_candles, ignore_conflicts=True)
+        Trade.objects.bulk_create(trades, ignore_conflicts=True)
+
+        self.stdout.write(
+            f"  History: {len(daily_candles) + len(hourly_candles) + len(weekly_candles)} candles (1H/1D/1W) "
+            f"and {len(trades)} historical trades generated"
+        )
+
+        # 4. Simulate Historical Battles
+        battle_count = 0
+        for _ in range(18):
+            c1, c2 = random.sample(creatures, 2)
+            if c1 == c2:
+                continue
+            try:
+                battle = BattleService.start_battle(c1, c2)
+                participants = list(battle.participants.select_related('creature').all())
+                for p in participants:
+                    p.current_hp = 500
+                    p.save(update_fields=['current_hp'])
+
+                for t in range(random.randint(2, 4)):
+                    attacker = participants[t % 2]
+                    defender = participants[(t + 1) % 2]
+                    ability = attacker.creature.abilities.first()
+                    battle.record_action(attacker, defender, ability, random.randint(25, 45))
+
+                winner = random.choice(participants)
+                c1.end_battle()
+                c2.end_battle()
+                battle.status = 'finished'
+                battle.winner = winner
+                battle.save(update_fields=['status', 'winner'])
+                BattleService.process_battle_result(battle)
+                battle_count += 1
+            except Exception:
+                continue
+
+        # Leave 3 active battles in progress
+        active_battles = 0
+        available_creatures = list(Creature.objects.filter(
+            currently_in_battle=False,
+            cooldown_expires_at__lte=timezone.now(),
+        ).order_by('?')[:6])
+
+        for k in range(0, len(available_creatures) - 1, 2):
+            try:
+                BattleService.start_battle(available_creatures[k], available_creatures[k + 1])
+                active_battles += 1
+            except Exception:
+                pass
+
+        self.stdout.write(f"  Battles: {battle_count} finished with ELO shocks, {active_battles} active")
+
+        # 5. Create Incubations
+        incubation_count = 0
+        if eggs:
+            for user in random.sample(users, min(20, len(users))):
+                egg = random.choice(eggs)
+                duration = timedelta(minutes=random.randint(15, 120))
+                Incubation.objects.create(
+                    user=user,
+                    egg_template=egg,
+                    hatches_at=timezone.now() + duration,
+                )
+                incubation_count += 1
+
+        self.stdout.write(f"  Incubations: {incubation_count} active incubations created")
