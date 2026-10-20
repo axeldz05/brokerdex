@@ -642,6 +642,13 @@ class ModelValidationTestCase(TestCase):
         )
         self.assertEqual(trade.total_amount, Decimal('300.00'))
 
+        fractional_trade = Trade(
+            quantity=Decimal('0.33333333'),
+            price_per_unit=Decimal('100.00'),
+            commission=Decimal('0.50'),
+        )
+        self.assertEqual(fractional_trade.total_amount, Decimal('33.33'))
+
     def test_portfolio_unrealized_pnl_is_derived(self):
         """Verify P&L is computed from current_price, not stored."""
         portfolio = Portfolio(
