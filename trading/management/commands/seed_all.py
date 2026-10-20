@@ -11,6 +11,7 @@ from django.db import transaction
 from django.conf import settings
 from django.core.files.base import ContentFile
 
+from account.money import quantize_money
 from account.models import Account
 from creature.models import Creature, Ability, EggTemplate, Battle, BattleParticipant, BattleAction, BattleInvestment
 from creature.services import BattleService
@@ -123,6 +124,16 @@ class Command(BaseCommand):
             ability_names = data.pop('abilities', [])
             base_stats = data.pop('base_stats', {})
 
+            initial_price = Decimal(str(data['initial_price']))
+            is_mythical = data.get('is_mythical', False)
+            is_legendary = data.get('is_legendary', False)
+            rarity = Decimal('1.0')
+            if is_mythical:
+                rarity = Decimal('2.0')
+            elif is_legendary:
+                rarity = Decimal('1.5')
+            ref_price = quantize_money(initial_price / rarity)
+
             # Build valid model fields from raw data
             creature_defaults = {
                 'description': data.get('description', ''),
@@ -134,10 +145,11 @@ class Command(BaseCommand):
                 'special_attack': base_stats.get('special_attack', 50),
                 'special_defense': base_stats.get('special_defense', 50),
                 'speed': base_stats.get('speed', 50),
-                'is_legendary': data.get('is_legendary', False),
-                'is_mythical': data.get('is_mythical', False),
-                'current_price': Decimal(str(data['initial_price'])),
-                'previous_close': Decimal(str(data['initial_price'])),
+                'is_legendary': is_legendary,
+                'is_mythical': is_mythical,
+                'current_price': initial_price,
+                'previous_close': initial_price,
+                'pricing_reference_price': ref_price,
                 'battle_cooldown': timedelta(hours=1),
                 'cooldown_expires_at': timezone.now(),
             }
