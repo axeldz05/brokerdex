@@ -16,8 +16,8 @@ class MarketOrderForm(forms.Form):
         widget=forms.NumberInput(attrs={
             'class': 'form-control',
             'placeholder': '0.00',
-            'step': '0.01',
-            'min': '0.01',
+            'step': 'any',
+            'min': '0.00000001',
         })
     )
     order_type = forms.ChoiceField(
@@ -45,8 +45,8 @@ class LimitOrderForm(forms.Form):
         widget=forms.NumberInput(attrs={
             'class': 'form-control',
             'placeholder': '0.00',
-            'step': '0.01',
-            'min': '0.01',
+            'step': 'any',
+            'min': '0.00000001',
         })
     )
     limit_price = forms.DecimalField(
