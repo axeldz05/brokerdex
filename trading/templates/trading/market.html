@@ -351,7 +351,8 @@ function filterCreatures(query) {
 
 (function() {
     const wsProtocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-    const wsUrl = wsProtocol + window.location.host + '/ws/prices/';
+    const host = (window.location.hostname === '0.0.0.0' ? '127.0.0.1:' + window.location.port : window.location.host);
+    const wsUrl = wsProtocol + host + '/ws/prices/';
     let socket = null;
     let reconnectTimeout = null;
 

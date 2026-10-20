@@ -814,8 +814,7 @@
 
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/luxon@3.4.4/build/global/luxon.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.3.1/dist/chartjs-adapter-luxon.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@0.2.1/dist/chartjs-chart-financial.min.js"></script>
 <script>
 let PRICE = {{ creature.current_price }};
@@ -932,14 +931,14 @@ function loadChart(interval) {
             }
 
             const candles = data.data.map(entry => ({
-                x: entry.timestamp,
+                x: new Date(entry.timestamp).valueOf(),
                 o: entry.open,
                 h: entry.high,
                 l: entry.low,
                 c: entry.close,
             }));
             const volumes = data.data.map(entry => ({
-                x: entry.timestamp,
+                x: new Date(entry.timestamp).valueOf(),
                 y: entry.volume,
             }));
 
@@ -1010,14 +1009,18 @@ function loadChart(interval) {
                             ticks: { color: '#8b949e', maxTicksLimit: 8 }
                         },
                         price: {
+                            type: 'linear',
+                            axis: 'y',
                             position: 'left',
                             grid: { color: 'rgba(48, 54, 61, 0.5)' },
                             ticks: {
                                 color: '#8b949e',
-                                callback: (val) => '$' + val.toFixed(0)
+                                callback: (val) => '$' + Number(val).toFixed(0)
                             }
                         },
                         volume: {
+                            type: 'linear',
+                            axis: 'y',
                             position: 'right',
                             beginAtZero: true,
                             grid: { drawOnChartArea: false },
@@ -1061,7 +1064,8 @@ loadChart('1H');
 (function() {
     const creatureId = "{{ creature.id }}";
     const wsProtocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-    const wsUrl = wsProtocol + window.location.host + '/ws/prices/' + creatureId + '/';
+    const host = (window.location.hostname === '0.0.0.0' ? '127.0.0.1:' + window.location.port : window.location.host);
+    const wsUrl = wsProtocol + host + '/ws/prices/' + creatureId + '/';
     let socket = null;
     let reconnectTimeout = null;
 
