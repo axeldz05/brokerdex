@@ -368,7 +368,7 @@
                                     data-speed="{{ entry.creature.speed }}"
                                     data-legendary="{{ entry.creature.is_legendary|yesno:'true,false' }}"
                                     data-mythical="{{ entry.creature.is_mythical|yesno:'true,false' }}"
-                                    data-description="{{ entry.creature.description|escapejs }}"
+                                    data-description="{{ entry.creature.description|escape }}"
                                     data-quantity="{{ entry.quantity }}"
                                     data-avg-cost="{{ entry.average_cost }}"
                                     data-curr-value="{{ entry.current_value }}"

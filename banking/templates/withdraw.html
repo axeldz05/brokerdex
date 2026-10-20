@@ -27,6 +27,7 @@
                                    class="form-control form-control-lg" 
                                    id="target_identifier" 
                                    name="target_identifier"
+                                   value="{{ form.target_identifier.value|default:'' }}"
                                    placeholder="Ej: 0000... o mi.alias.banco"
                                    required>
                             <div class="form-text text-muted">Enter the CBU, CVU or Alias of the destination account.</div>
@@ -40,6 +41,7 @@
                                        class="form-control border-start-0 ps-0" 
                                        id="amount" 
                                        name="amount" 
+                                       value="{{ form.amount.value|default:'' }}"
                                        step="0.01" 
                                        min="0.01"
                                        max="{{ user_balance }}"
