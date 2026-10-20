@@ -60,6 +60,11 @@ MIDDLEWARE = [
 
 RATELIMIT_VIEW = "brokerdex.views.ratelimited_view"
 RATELIMIT_USE_CACHE = "default"
+RATELIMIT_IP_META_KEY = (
+    "HTTP_X_FORWARDED_FOR"
+    if env.bool("DJANGO_TRUST_X_FORWARDED_FOR", default=False)
+    else "REMOTE_ADDR"
+)
 
 
 LOGGING = {
