@@ -64,6 +64,10 @@ urlpatterns = [
 ]
 
 if settings.DEBUG:
+    urlpatterns += [
+        path('dev/login/', views.dev_login_list, name='dev_login_list'),
+        path('dev/login/<str:username>/', views.dev_login_as, name='dev_login_as'),
+    ]
     urlpatterns += static(
         settings.MEDIA_URL,
         document_root=settings.MEDIA_ROOT,

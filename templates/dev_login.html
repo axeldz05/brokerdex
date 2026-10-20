@@ -1,0 +1,74 @@
+{% extends "layout.html" %}
+{% load humanize %}
+
+{% block content %}
+<div class="container py-4" style="max-width: 900px;">
+    <div class="d-flex align-items-center justify-content-between mb-4 pb-2 border-bottom border-secondary">
+        <div>
+            <h1 class="h3 mb-1 text-light">⚡ Selector de Cuentas (Modo Dev)</h1>
+            <p class="text-secondary small mb-0">Inicia sesión con 1 solo clic en cualquier cuenta de bot o usuario sin contraseña (solo activo con <code>DEBUG=True</code>).</p>
+        </div>
+        <a href="{% url 'account:login' %}" class="btn btn-outline-secondary btn-sm">Volver al login clásico</a>
+    </div>
+
+    <!-- Search box -->
+    <div class="mb-4">
+        <input type="text"
+               id="userSearch"
+               class="form-control bg-dark text-light border-secondary"
+               placeholder="Buscar bot por nombre (ej: cynthia, red, nessa, 050)..."
+               oninput="filterUsers(this.value)">
+    </div>
+
+    {% if demo_users %}
+    <h2 class="h5 text-warning mb-3">👤 Usuarios Demo</h2>
+    <div class="row g-3 mb-4">
+        {% for u in demo_users %}
+        <div class="col-md-6 user-card" data-username="{{ u.username|lower }}">
+            <div class="card bg-dark border-secondary p-3 h-100 d-flex flex-row justify-content-between align-items-center">
+                <div>
+                    <div class="fw-bold text-light">{{ u.username }}</div>
+                    <div class="text-secondary small">${{ u.balance_dollars|floatformat:2|intcomma }} USD</div>
+                </div>
+                <a href="{% url 'dev_login_as' username=u.username %}" class="btn btn-primary btn-sm">
+                    Entrar &rarr;
+                </a>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <h2 class="h5 text-info mb-3">🤖 Bots de Simulación ({{ bots|length }})</h2>
+    <div class="row g-3" id="botsGrid">
+        {% for bot in bots %}
+        <div class="col-md-6 user-card" data-username="{{ bot.username|lower }}">
+            <div class="card bg-dark border-secondary p-3 h-100 d-flex flex-row justify-content-between align-items-center">
+                <div>
+                    <div class="fw-bold text-light font-monospace">{{ bot.username }}</div>
+                    <div class="text-secondary small">${{ bot.balance_dollars|floatformat:2|intcomma }} USD</div>
+                </div>
+                <a href="{% url 'dev_login_as' username=bot.username %}" class="btn btn-outline-info btn-sm">
+                    Entrar &rarr;
+                </a>
+            </div>
+        </div>
+        {% empty %}
+        <div class="col-12 text-secondary">
+            No hay bots creados aún. Ejecuta <code>./manage.sh seed_all --simulation</code> para crearlos.
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<script>
+function filterUsers(query) {
+    const q = query.toLowerCase().trim();
+    const cards = document.querySelectorAll('.user-card');
+    cards.forEach(card => {
+        const username = card.dataset.username || '';
+        card.style.display = username.includes(q) ? '' : 'none';
+    });
+}
+</script>
+{% endblock %}
