@@ -451,6 +451,19 @@ class MarketIndicesIntegrationTests(TestCase):
         self.assertContains(response, 'Fire-Type Index')
         self.assertContains(response, '175.00')
 
+    def test_get_latest_indices_single_query(self):
+        MarketIndicesService.calculate_type_index('fire')
+        MarketIndicesService.calculate_type_index('water')
+        MarketIndicesService.invalidate_cache()
+
+        with self.assertNumQueries(1):
+            indices = MarketIndicesService.get_latest_indices()
+
+        self.assertEqual(len(indices), 2)
+        types = [idx.creature_type for idx in indices]
+        self.assertIn('fire', types)
+        self.assertIn('water', types)
+
     def test_market_indices_api(self):
         self._login()
         MarketIndicesService.calculate_type_index('fire')

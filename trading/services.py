@@ -1026,14 +1026,17 @@ class MarketIndicesService:
         if cached is not None:
             return cached
 
-        latest_indices = []
-        for type_choice in MarketIndex._meta.get_field('creature_type').choices:
-            type_value = type_choice[0]
-            latest = MarketIndex.objects.filter(
-                creature_type=type_value
-            ).order_by('-timestamp').first()
-            if latest:
-                latest_indices.append(latest)
+        indices = list(
+            MarketIndex.objects.order_by(
+                'creature_type', '-timestamp'
+            ).distinct('creature_type')
+        )
+        indices_by_type = {idx.creature_type: idx for idx in indices}
+        latest_indices = [
+            indices_by_type[type_choice[0]]
+            for type_choice in MarketIndex._meta.get_field('creature_type').choices
+            if type_choice[0] in indices_by_type
+        ]
 
         cache.set(cls.CACHE_KEY, latest_indices, timeout=cls.CACHE_TIMEOUT)
         return latest_indices
