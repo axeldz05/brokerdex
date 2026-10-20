@@ -94,12 +94,14 @@ class Transfer(models.Model):
         Account,
         on_delete=models.SET_NULL,
         null=True,
-        related_name="sent_transfers")
+        related_name="received_transfers",
+    )
     sender = models.ForeignKey(
         Account,
         on_delete=models.SET_NULL,
         null=True,
-        related_name="received_transfers")
+        related_name="sent_transfers",
+    )
 
     date = models.DateTimeField(auto_now_add=True)
 
