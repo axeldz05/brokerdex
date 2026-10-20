@@ -145,7 +145,7 @@ class Creature(models.Model):
 
     def get_absolute_url(self):
         from django.urls import reverse
-        return reverse('creature_detail', args=[str(self.id)])
+        return reverse('trading:creature_detail', args=[str(self.id)])
 
     def price_change(self):
         """Returns (change_abs, change_pct) from previous_close to current_price."""

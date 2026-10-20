@@ -22,6 +22,10 @@ class CreatureAndBattleTests(TestCase):
             battle_cooldown=timedelta(hours=1)
         )
 
+    def test_creature_get_absolute_url(self):
+        url = self.charmander.get_absolute_url()
+        self.assertEqual(url, f"/trading/creature/{self.charmander.id}/")
+
     def test_creature_can_have_up_to_4_abilities(self):
         self.charmander.abilities.add(self.scratch)
         self.charmander.abilities.add(self.ember)
