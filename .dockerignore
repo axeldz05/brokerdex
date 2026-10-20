@@ -1,0 +1,14 @@
+.git
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+celerybeat*
+dump.rdb
+staticfiles
+media
+.env
+.env.*
+!.env.example

@@ -13,6 +13,30 @@ afectan hechos financieros persistidos y se procesan con Django y Celery.
 - Gunicorn y WhiteNoise para el proceso web y los estáticos de producción.
 - Usuario propio `account.Account`, con login por username o email.
 
+## Inicio con Docker (entorno aislado)
+
+No requiere instalar Python, uv, PostgreSQL ni Redis en el sistema anfitrión:
+
+```bash
+docker compose up
+# o simplemente:
+bash run.sh
+```
+
+El stack de Docker levanta automáticamente:
+- `db`: PostgreSQL 17 Alpine con volumen persistente (`postgres_data`).
+- `redis`: Redis Alpine con volumen persistente (`redis_data`).
+- `migrate`: Aplica migraciones pendientes y carga el catálogo inicial si la base está vacía.
+- `web`: Servidor Django accesible en `http://localhost:8000`.
+- `worker`: Celery worker para tareas asíncronas.
+- `beat`: Celery beat scheduler.
+
+Para correrlo localmente sobre el sistema operativo anfitrión sin Docker:
+
+```bash
+bash run.sh --local
+```
+
 ## Inicio local
 
 Requisitos: Python 3.13, `uv`, PostgreSQL y Redis. Ajustar las URLs locales del
@@ -41,6 +65,38 @@ uv run python manage.py seed_all
 `seed_all --clear --demo` borra datos y solo debe usarse con confirmación
 explícita en una base local descartable. El seed puede descargar sprites desde
 PokeAPI.
+
+### Población Masiva y Simulación de Mercado
+
+Brokerdex incluye un generador de población a gran escala y un motor de bots autónomos para simular un mercado financiero vivo:
+
+1. **Poblar el mercado masivo**:
+   ```bash
+   uv run python manage.py seed_all --simulation
+   # o reiniciando la base:
+   uv run python manage.py seed_all --clear --simulation
+   ```
+   Crea 100 entrenadores, carteras distribuidas, 30 días de historial de velas OHLCV (1H, 1D, 1W), trades pasados, incubaciones y combates con shocks ELO.
+
+2. **Monitoreo en vivo de bots (Stream interactivo)**:
+   ```bash
+   uv run python manage.py run_bots
+   # o con intervalo configurable (ej. cada 2 segundos):
+   uv run python manage.py bots --stream --interval 2.0
+   ```
+
+3. **Control de autonomía en tiempo real**:
+   ```bash
+   uv run python manage.py bots --status   # Muestra métricas por estrategia
+   uv run python manage.py bots --stop     # Pausa la autonomía de los bots
+   uv run python manage.py bots --start    # Reanuda la autonomía
+   ```
+
+Estrategias de bots implementadas:
+- `[MOMENTUM]`: Sigue rachas de victorias en combates y presiones de 24h.
+- `[VALUE]`: Caza descuentos o toma ganancias según el precio de referencia intrínseco.
+- `[MARKET_MAKER]`: Provee liquidez colocando órdenes límite alrededor del spread.
+- `[CASUAL]`: Compras esporádicas y apertura de incubaciones.
 
 ## Conducta implementada
 
