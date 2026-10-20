@@ -1,4 +1,5 @@
 from decimal import Decimal
+from unittest.mock import patch
 from django.core.cache import cache
 from django.test import TestCase, RequestFactory
 from django.urls import reverse
@@ -10,6 +11,8 @@ from brokerdex.views import ratelimited_view
 class RateLimitingTests(TestCase):
     def setUp(self):
         cache.clear()
+        self.time_patcher = patch("time.time", return_value=1700000000.0)
+        self.time_patcher.start()
         self.factory = RequestFactory()
         self.user = Account.objects.create_user(
             username="ratelimit_user",
@@ -20,6 +23,7 @@ class RateLimitingTests(TestCase):
         self.client.force_login(self.user)
 
     def tearDown(self):
+        self.time_patcher.stop()
         cache.clear()
 
     def test_ratelimited_view_returns_json_for_webhook_and_api(self):

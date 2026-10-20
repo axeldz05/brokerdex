@@ -46,6 +46,12 @@ class Portfolio(models.Model):
         unique_together = ['owner', 'creature']
         verbose_name_plural = 'portfolios'
         ordering = ['-updated_at']
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(quantity__gte=0),
+                name='portfolio_quantity_nonnegative',
+            ),
+        ]
 
     def __str__(self):
         return f"{self.owner.username} — {self.creature.name} ×{self.quantity}"

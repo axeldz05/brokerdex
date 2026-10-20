@@ -120,6 +120,10 @@ class Transfer(models.Model):
                 ),
                 name='unique_deposit_provider_reference',
             ),
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0),
+                name='transfer_amount_positive',
+            ),
         ]
 
     @property

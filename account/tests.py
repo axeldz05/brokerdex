@@ -39,6 +39,15 @@ class AccountIdentifierTests(TestCase):
         with self.assertRaises(IntegrityError):
             Account.objects.create(username="u2", cvu="1111", alias="alias.two")
 
+    def test_negative_balance_cents_raises_integrity_error(self):
+        with self.assertRaises(IntegrityError):
+            Account.objects.create_user(
+                username="negbalance",
+                email="neg@example.com",
+                password="password123",
+                balance_cents=-100,
+            )
+
     def test_generated_identifiers_have_the_expected_shape(self):
         cvu, alias = generate_account_identifiers()
 

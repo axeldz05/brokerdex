@@ -28,6 +28,14 @@ class Account(AbstractBaseUser, PermissionsMixin):
     REQUIRED_FIELDS = ['email']
     objects = AccountManager()
 
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(balance_cents__gte=0),
+                name='account_balance_cents_nonnegative',
+            ),
+        ]
+
     def __str__(self):
         return self.username
 
