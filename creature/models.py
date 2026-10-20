@@ -100,6 +100,20 @@ class Creature(models.Model):
         null=True,
         verbose_name="Creature Large Icon"
     )
+
+    # Liquidity / Market Maker reserves
+    reserve_cents = models.BigIntegerField(
+        default=0,
+        blank=True,
+        help_text="Cash reserves backing the Market Maker liquidity pool for this creature",
+    )
+    pool_supply = models.DecimalField(
+        max_digits=18,
+        decimal_places=8,
+        default=Decimal('0'),
+        blank=True,
+        help_text="Asset inventory held by the Market Maker",
+    )
     
     class Meta:
         verbose_name = "creature"
@@ -107,6 +121,12 @@ class Creature(models.Model):
         indexes = [
             models.Index(fields=['current_price']),
             models.Index(fields=['type']),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(reserve_cents__gte=0),
+                name='creature_reserve_cents_nonnegative',
+            ),
         ]
         ordering = ['name']
 
@@ -128,6 +148,11 @@ class Creature(models.Model):
         ability_id = getattr(ability, 'pk', ability)
         if self.abilities.filter(pk=ability_id).exists():
             self.abilities.remove(ability)
+
+    @property
+    def reserve_dollars(self):
+        from account.money import cents_to_dollars
+        return cents_to_dollars(self.reserve_cents)
 
     def __str__(self):
         types = f"{self.type}"

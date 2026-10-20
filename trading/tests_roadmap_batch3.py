@@ -29,12 +29,16 @@ class BatchThreeTestCase(TestCase):
         return account
 
     def create_creature(self, name, price='100.00', **kwargs):
+        reserve_cents = kwargs.pop('reserve_cents', 100_000_00)
+        pool_supply = kwargs.pop('pool_supply', Decimal('1000.0'))
         return Creature.objects.create(
             name=name,
             description=f'{name} test creature.',
             type=kwargs.pop('type', 'fire'),
             current_price=Decimal(price),
             previous_close=Decimal(price),
+            reserve_cents=reserve_cents,
+            pool_supply=pool_supply,
             battle_cooldown=timedelta(hours=1),
             **kwargs,
         )

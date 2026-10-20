@@ -1,5 +1,5 @@
 from datetime import timezone as datetime_timezone
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
@@ -20,6 +20,7 @@ from .models import (
     Order,
     Portfolio,
     PriceHistory,
+    SystemTreasury,
     Trade,
 )
 
@@ -511,6 +512,13 @@ class TradingEngine:
             price,
         )
         actual_cost_cents = cls._money_to_cents(subtotal + commission)
+        subtotal_cents = cls._money_to_cents(subtotal)
+        commission_cents = cls._money_to_cents(commission)
+
+        creature_ref = (buy_order or sell_order).creature
+        locked_creature = Creature.objects.select_for_update().get(
+            pk=creature_ref.pk
+        )
 
         if buyer is not None:
             if buy_order.execution_type == Order.ExecutionType.LIMIT:
@@ -530,7 +538,7 @@ class TradingEngine:
             cls._credit_buyer_portfolio(
                 portfolios,
                 buyer,
-                buy_order.creature,
+                locked_creature,
                 quantity,
                 price,
             )
@@ -540,7 +548,7 @@ class TradingEngine:
             realized_cost_basis = cls._debit_seller_portfolio(
                 portfolios,
                 seller,
-                sell_order.creature,
+                locked_creature,
                 quantity,
             )
             seller.balance_cents += cls._money_to_cents(subtotal - commission)
@@ -551,6 +559,51 @@ class TradingEngine:
                         "SELL order reservation is insufficient."
                     )
                 sell_order.reserved_quantity -= quantity
+
+        # Market Maker accounting
+        if buyer is None:
+            # User sells to Market Maker: payout debited from creature.reserve_cents,
+            # units enter creature.pool_supply
+            if locked_creature.reserve_cents < subtotal_cents:
+                raise ValidationError(
+                    f"Market Maker has insufficient cash reserves "
+                    f"({locked_creature.reserve_cents}¢) to purchase "
+                    f"{quantity} units of {locked_creature.name}."
+                )
+            locked_creature.reserve_cents -= subtotal_cents
+            locked_creature.pool_supply += quantity
+            locked_creature.save(update_fields=['reserve_cents', 'pool_supply'])
+
+        if seller is None:
+            # User buys from Market Maker: net subtotal credited to creature.reserve_cents,
+            # units exit creature.pool_supply
+            locked_creature.reserve_cents += subtotal_cents
+            locked_creature.pool_supply -= quantity
+            locked_creature.save(update_fields=['reserve_cents', 'pool_supply'])
+
+        # Distribute collected commissions: 65% to dividend pool, 35% to company equity
+        total_commission_cents = 0
+        if buyer is not None:
+            total_commission_cents += commission_cents
+        if seller is not None:
+            total_commission_cents += commission_cents
+
+        if total_commission_cents > 0:
+            dividend_cents = int(
+                (Decimal(total_commission_cents) * Decimal('0.65')).quantize(
+                    Decimal('1'),
+                    rounding=ROUND_HALF_UP,
+                )
+            )
+            equity_cents = total_commission_cents - dividend_cents
+            treasury = SystemTreasury.get_for_update()
+            treasury.dividend_pool_cents += dividend_cents
+            treasury.company_equity_cents += equity_cents
+            treasury.save(update_fields=[
+                'dividend_pool_cents',
+                'company_equity_cents',
+                'updated_at',
+            ])
 
         if buy_order is not None:
             cls._mark_filled(buy_order, quantity)
@@ -574,7 +627,7 @@ class TradingEngine:
         return Trade.objects.create(
             buyer=buyer,
             seller=seller,
-            creature=(buy_order or sell_order).creature,
+            creature=locked_creature,
             buy_order=buy_order,
             sell_order=sell_order,
             quantity=quantity,

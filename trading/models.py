@@ -6,7 +6,7 @@ from django.core.validators import MinValueValidator
 from django.db import models
 
 from account.models import Account
-from account.money import quantize_money
+from account.money import cents_to_dollars, quantize_money
 from creature.models import Creature
 
 
@@ -450,3 +450,68 @@ class Notification(models.Model):
             f"[{self.notification_type}] {self.title} "
             f"— {self.user.username}"
         )
+
+
+class SystemTreasury(models.Model):
+    """
+    Singleton holding system-level monetary pools in cents.
+    - dividend_pool_cents: pool for battle prizes and training yields.
+    - company_equity_cents: platform net profit (liability-free).
+    """
+    dividend_pool_cents = models.BigIntegerField(
+        default=0,
+        help_text="Accumulated pool for battle prizes and training yields",
+    )
+    company_equity_cents = models.BigIntegerField(
+        default=0,
+        help_text="Accumulated platform net equity",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "system treasury"
+        verbose_name_plural = "system treasuries"
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(dividend_pool_cents__gte=0),
+                name='treasury_dividend_pool_nonnegative',
+            ),
+            models.CheckConstraint(
+                condition=models.Q(company_equity_cents__gte=0),
+                name='treasury_company_equity_nonnegative',
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f"SystemTreasury(dividends={self.dividend_pool_cents}¢, "
+            f"equity={self.company_equity_cents}¢)"
+        )
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    @property
+    def dividend_pool_dollars(self):
+        return cents_to_dollars(self.dividend_pool_cents)
+
+    @property
+    def company_equity_dollars(self):
+        return cents_to_dollars(self.company_equity_cents)
+
+    @classmethod
+    def get_instance(cls):
+        instance = cls.objects.filter(pk=1).first()
+        if instance is None:
+            instance, _ = cls.objects.get_or_create(pk=1)
+        return instance
+
+    @classmethod
+    def get_for_update(cls):
+        instance = cls.objects.select_for_update().filter(pk=1).first()
+        if instance is None:
+            cls.objects.get_or_create(pk=1)
+            instance = cls.objects.select_for_update().get(pk=1)
+        return instance
+

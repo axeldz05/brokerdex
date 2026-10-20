@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Portfolio, Order, Trade, PriceHistory
+from .models import Portfolio, Order, Trade, PriceHistory, SystemTreasury
 
 
 @admin.register(Portfolio)
@@ -41,3 +41,13 @@ class PriceHistoryAdmin(admin.ModelAdmin):
     list_filter = ('interval', 'creature__type')
     search_fields = ('creature__name',)
     readonly_fields = ('id',)
+
+
+@admin.register(SystemTreasury)
+class SystemTreasuryAdmin(admin.ModelAdmin):
+    list_display = (
+        'pk', 'dividend_pool_cents', 'dividend_pool_dollars',
+        'company_equity_cents', 'company_equity_dollars', 'updated_at'
+    )
+    readonly_fields = ('updated_at',)
+

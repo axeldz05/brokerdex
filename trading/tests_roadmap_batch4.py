@@ -215,6 +215,8 @@ class OrderBookTestCase(TestCase):
             type='fire',
             current_price=Decimal('100.00'),
             previous_close=Decimal('100.00'),
+            reserve_cents=100_000_00,
+            pool_supply=Decimal('1000.0'),
             hp=50,
             attack=50,
             defense=50,

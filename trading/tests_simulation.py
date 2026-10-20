@@ -68,6 +68,8 @@ class SimulationStrategiesTestCase(TestCase):
             current_price=Decimal('100.00'),
             previous_close=Decimal('100.00'),
             pricing_reference_price=Decimal('100.00'),
+            reserve_cents=100_000_00,
+            pool_supply=Decimal('1000.0'),
             battle_cooldown=timedelta(hours=1),
             cooldown_expires_at=timezone.now(),
         )

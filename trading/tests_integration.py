@@ -37,6 +37,8 @@ class TradingIntegrationTests(TestCase):
             type='electric',
             current_price=Decimal('150.00'),
             previous_close=Decimal('145.00'),
+            reserve_cents=100_000_00,
+            pool_supply=Decimal('1000.0'),
             hp=35, attack=55, defense=40,
             special_attack=50, special_defense=50, speed=90,
             battle_cooldown=timedelta(hours=1),
@@ -346,7 +348,7 @@ class TradingIntegrationTests(TestCase):
         balance_after_buy = self.user.balance_cents
 
         self.creature.current_price = Decimal('200.00')
-        self.creature.save()
+        self.creature.save(update_fields=['current_price'])
 
         sell_trade = TradingEngine.execute_market_sell(
             self.user, self.creature, Decimal('10')

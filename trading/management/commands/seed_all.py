@@ -11,7 +11,7 @@ from django.db import transaction
 from django.conf import settings
 from django.core.files.base import ContentFile
 
-from account.money import quantize_money
+from account.money import dollars_to_cents, quantize_money
 from account.models import Account
 from creature.models import (
     Creature,
@@ -24,7 +24,7 @@ from creature.models import (
     Incubation,
 )
 from creature.services import BattleService
-from trading.models import PriceHistory, Trade, Portfolio
+from trading.models import PriceHistory, Trade, Portfolio, SystemTreasury
 
 
 
@@ -157,6 +157,9 @@ class Command(BaseCommand):
                 rarity = Decimal('1.5')
             ref_price = quantize_money(initial_price / rarity)
 
+            reserve_cents = dollars_to_cents(ref_price * 1000)
+            pool_supply = Decimal('1000.00000000')
+
             # Build valid model fields from raw data
             creature_defaults = {
                 'description': data.get('description', ''),
@@ -173,6 +176,8 @@ class Command(BaseCommand):
                 'current_price': initial_price,
                 'previous_close': initial_price,
                 'pricing_reference_price': ref_price,
+                'reserve_cents': reserve_cents,
+                'pool_supply': pool_supply,
                 'battle_cooldown': timedelta(hours=1),
                 'cooldown_expires_at': timezone.now(),
             }
@@ -184,6 +189,10 @@ class Command(BaseCommand):
             )
             if was_created:
                 created += 1
+            else:
+                creature.reserve_cents = reserve_cents
+                creature.pool_supply = pool_supply
+                creature.save(update_fields=['reserve_cents', 'pool_supply'])
 
             for ab_name in ability_names:
                 ability = get_or_none(Ability, name=ab_name)
@@ -276,6 +285,7 @@ class Command(BaseCommand):
         self.stdout.write(f"  Demo users: {created} new, {len(users_data) - created} existing (balances reset) / {len(users_data)} total")
 
     def _seed_market_maker(self):
+        SystemTreasury.get_instance()
         _, created = Account.objects.get_or_create(
             username='market_maker',
             defaults={
