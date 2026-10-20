@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from django.core.cache import cache
 from django.test import SimpleTestCase
@@ -54,6 +54,60 @@ class TaskLockUnitTests(SimpleTestCase):
             cache.get(lock_key),
             "different-token-from-another-worker",
         )
+
+    def test_task_lock_uses_lua_script_when_redis_available(self):
+        from brokerdex.locks import LUA_RELEASE_LOCK_SCRIPT, _release_redis_lock
+
+        mock_cache = MagicMock()
+        mock_raw_cache = MagicMock()
+        mock_client = MagicMock()
+        mock_serializer = MagicMock()
+
+        mock_cache._cache = mock_raw_cache
+        mock_cache.make_and_validate_key.return_value = "brokerdex:1:test_key"
+        mock_raw_cache.get_client.return_value = mock_client
+        mock_raw_cache._serializer = mock_serializer
+        mock_serializer.dumps.return_value = b"serialized:my-token"
+
+        result = _release_redis_lock(mock_cache, "test_key", "my-token")
+
+        self.assertTrue(result)
+        mock_raw_cache.get_client.assert_called_once_with(
+            "brokerdex:1:test_key",
+            write=True,
+        )
+        mock_client.eval.assert_called_once_with(
+            LUA_RELEASE_LOCK_SCRIPT,
+            1,
+            "brokerdex:1:test_key",
+            b"serialized:my-token",
+        )
+
+    def test_task_lock_redis_fallback_on_exception(self):
+        from brokerdex.locks import _release_redis_lock
+
+        mock_cache = MagicMock()
+        mock_raw_cache = MagicMock()
+        mock_cache._cache = mock_raw_cache
+        mock_cache.make_and_validate_key.return_value = "brokerdex:1:test_key"
+        mock_raw_cache.get_client.side_effect = RuntimeError("Redis error")
+
+        result = _release_redis_lock(mock_cache, "test_key", "my-token")
+        self.assertFalse(result)
+
+    def test_release_redis_lock_returns_false_for_non_redis_cache(self):
+        from brokerdex.locks import _release_redis_lock
+
+        # LocMemCache is active in tests, has no get_client on _cache
+        self.assertFalse(_release_redis_lock(cache, "test_key", "token"))
+
+    def test_task_lock_exit_invokes_release_redis_lock(self):
+        with patch("brokerdex.locks._release_redis_lock") as mock_release:
+            mock_release.return_value = True
+            with TaskLock("test:lock:invoke", timeout=30) as acquired:
+                self.assertTrue(acquired)
+
+            mock_release.assert_called_once()
 
 
 class PreventTaskOverlapDecoratorTests(SimpleTestCase):
