@@ -63,7 +63,7 @@ def transfer(request):
                 return redirect('dashboard:dashboard')
 
             except ValidationError as e:
-                messages.error(request, e.message)
+                messages.error(request, ', '.join(e.messages))
 
             except Exception as e:
                 messages.error(request, f"Error: {str(e)}")
@@ -106,7 +106,7 @@ def withdraw(request):
                     )
                 return redirect('dashboard:dashboard')
             except ValidationError as e:
-                messages.error(request, e.message)
+                messages.error(request, ', '.join(e.messages))
         else:
             _message_form_errors(request, form)
     else:

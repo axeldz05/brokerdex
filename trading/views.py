@@ -144,7 +144,7 @@ def place_order_view(request):
                 )
                 messages.success(request, "Limit order placed successfully.")
             except ValidationError as e:
-                messages.error(request, str(e.message))
+                messages.error(request, ', '.join(e.messages))
             return redirect('trading:creature_detail', creature_id=creature.pk)
         else:
             for field, errors in form.errors.items():
@@ -190,7 +190,7 @@ def place_order_view(request):
                         )
                     )
             except ValidationError as e:
-                messages.error(request, str(e.message))
+                messages.error(request, ', '.join(e.messages))
             return redirect('trading:creature_detail', creature_id=creature.pk)
         else:
             for field, errors in form.errors.items():
@@ -325,7 +325,7 @@ def cancel_order_view(request, order_id):
         TradingEngine.cancel_order(order)
         messages.success(request, "Order cancelled successfully.")
     except ValidationError as e:
-        messages.error(request, str(e.message))
+        messages.error(request, ', '.join(e.messages))
 
     return redirect('trading:orders')
 

@@ -483,6 +483,30 @@ class BankingViewTestCase(TestCase):
             [str(message) for message in get_messages(response.wsgi_request)],
         )
 
+    def test_transfer_post_handles_validation_error_list(self):
+        with patch("banking.models.Transfer.objects.create_transaction", side_effect=ValidationError(["Transfer rejected."])):
+            response = self.client.post(
+                reverse("banking:transfer"),
+                {"receiver_username": self.receiver.username, "amount": "10.00"},
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertIn(
+                "Transfer rejected.",
+                [str(m) for m in get_messages(response.wsgi_request)],
+            )
+
+    def test_withdraw_post_handles_validation_error_list(self):
+        with patch("banking.models.Transfer.objects.process_external_withdrawal", side_effect=ValidationError(["Withdrawal rejected."])):
+            response = self.client.post(
+                reverse("banking:withdraw"),
+                {"target_identifier": "DESTINATION", "amount": "10.00"},
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertIn(
+                "Withdrawal rejected.",
+                [str(m) for m in get_messages(response.wsgi_request)],
+            )
+
 
 class ConcurrentTransferTestCase(TransactionTestCase):
     reset_sequences = True

@@ -1,9 +1,11 @@
 from decimal import Decimal
 from datetime import timedelta
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from django.test import TestCase, Client, override_settings
 from django.urls import reverse
+from django.contrib.messages import get_messages
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.utils import timezone
@@ -182,6 +184,35 @@ class TradingIntegrationTests(TestCase):
         self.assertRedirects(response, reverse('trading:orders'))
         order.refresh_from_db()
         self.assertEqual(order.status, Order.Status.CANCELLED)
+
+    def test_cancel_order_handles_validation_error_list(self):
+        self._login()
+        order = TradingEngine.place_limit_order(
+            self.user, self.creature,
+            Order.OrderType.BUY, Decimal('2'), Decimal('100.00'),
+        )
+        with patch.object(TradingEngine, "cancel_order", side_effect=ValidationError(["Cancellation not allowed."])):
+            response = self.client.post(
+                reverse('trading:cancel_order', args=[order.pk])
+            )
+            self.assertRedirects(response, reverse('trading:orders'))
+            messages = [str(m) for m in get_messages(response.wsgi_request)]
+            self.assertIn("Cancellation not allowed.", messages)
+
+    def test_place_order_handles_validation_error_list(self):
+        self._login()
+        with patch.object(TradingEngine, "place_limit_order", side_effect=ValidationError(["Order limit error."])):
+            response = self.client.post(reverse('trading:place_order'), {
+                'creature': self.creature.pk,
+                'order_type': Order.OrderType.BUY,
+                'execution_type': 'LIMIT',
+                'quantity': '1',
+                'limit_price': '100.00',
+            })
+            expected_url = reverse('trading:creature_detail', args=[self.creature.pk])
+            self.assertRedirects(response, expected_url)
+            messages = [str(m) for m in get_messages(response.wsgi_request)]
+            self.assertIn("Order limit error.", messages)
 
     def test_portfolio_shows_holdings(self):
         self._login()
