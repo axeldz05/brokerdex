@@ -319,3 +319,41 @@ class BattlePricingShockTests(TestCase):
         payload = BattleService.battle_to_dict(battle)
 
         self.assertNotIn('elo', json.dumps(payload).lower())
+
+    def test_battle_result_notifications_no_n_plus_one_queries(self):
+        holders = []
+        for i in range(5):
+            user = Account.objects.create_user(
+                username=f"holder_{i}",
+                email=f"holder_{i}@example.com",
+                password="password123",
+            )
+            Portfolio.objects.create(
+                owner=user,
+                creature=self.underdog,
+                quantity=Decimal('1'),
+                average_cost=Decimal('100.00'),
+            )
+            holders.append(user)
+
+        Portfolio.objects.create(
+            owner=holders[0],
+            creature=self.favorite,
+            quantity=Decimal('1'),
+            average_cost=Decimal('100.00'),
+        )
+
+        battle = self._start_battle()
+        participants = list(battle.participants.select_related('creature').all())
+        battle.winner = participants[0]
+
+        # 2 queries for Portfolio (one per participant), 2 queries for Notification bulk_create
+        with self.assertNumQueries(4):
+            BattleService._create_battle_notifications(battle, participants)
+
+        self.assertEqual(
+            Notification.objects.filter(
+                notification_type=Notification.Type.BATTLE_RESULT
+            ).count(),
+            6,
+        )
