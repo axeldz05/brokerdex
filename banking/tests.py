@@ -41,6 +41,8 @@ class TransferTestCase(TestCase):
                 pk=account2.pk).balance_cents,
             15000)
         self.assertEqual(transfer.status, Transfer.TransactionStatus.COMPLETED)
+        self.assertIn(transfer, account2.sent_transfers.all())
+        self.assertIn(transfer, account1.received_transfers.all())
 
     def test_02_cannot_transfer_with_less_money_than_balance(self):
         """Transactions with an amount less than balance should throw error"""
