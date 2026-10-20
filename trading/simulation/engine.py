@@ -4,6 +4,7 @@ from typing import List
 from account.models import Account
 from creature.models import Creature
 from creature.services import BattleService
+from trading.services import PricingEngine
 from .state import is_simulation_active, record_simulation_event
 from .strategies import (
     MomentumStrategy,
@@ -75,6 +76,15 @@ class SimulationEngine:
                     if event:
                         event['username'] = user.username
                         events.append(event)
+                        # When a trade occurs, update the spot price and broadcast over WebSockets
+                        creature_name = event.get('creature')
+                        if creature_name:
+                            matched = next((c for c in creatures if c.name == creature_name), None)
+                            if matched:
+                                try:
+                                    PricingEngine.update_creature_price(matched)
+                                except Exception:
+                                    pass
                         break
                 except Exception:
                     continue
