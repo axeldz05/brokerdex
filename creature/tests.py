@@ -153,3 +153,12 @@ class CreatureAndBattleTests(TestCase):
         self.assertEqual(inv.investor_count, 5)
         self.assertEqual(inv.battle, battle)
         self.assertEqual(inv.creature, self.charmander)
+
+    def test_get_type_color_filter(self):
+        from creature.templatetags.type_colors import get_type_color
+        from trading.templatetags.trading_tags import TYPE_COLORS
+        for type_name, expected_color in TYPE_COLORS.items():
+            self.assertEqual(get_type_color(type_name), expected_color)
+            self.assertEqual(get_type_color(type_name.upper()), expected_color)
+        self.assertEqual(get_type_color("unknown_type"), "#A8A878")
+        self.assertEqual(get_type_color(""), "#A8A878")
