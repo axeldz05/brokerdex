@@ -26,6 +26,21 @@ class CreatureAndBattleTests(TestCase):
         url = self.agnidon.get_absolute_url()
         self.assertEqual(url, f"/trading/creature/{self.agnidon.id}/")
 
+    def test_creature_ability_methods(self):
+        self.agnidon.abilities.add(self.scratch)
+        qs = self.agnidon.get_abilities_queryset()
+        self.assertIn(self.scratch, qs)
+
+        # Remove by ID
+        self.agnidon.remove_ability(self.scratch.id)
+        self.assertFalse(self.agnidon.abilities.filter(id=self.scratch.id).exists())
+
+        # Add and remove by instance
+        self.agnidon.add_ability(self.ember)
+        self.assertTrue(self.agnidon.abilities.filter(id=self.ember.id).exists())
+        self.agnidon.remove_ability(self.ember)
+        self.assertFalse(self.agnidon.abilities.filter(id=self.ember.id).exists())
+
     def test_creature_can_have_up_to_4_abilities(self):
         self.agnidon.abilities.add(self.scratch)
         self.agnidon.abilities.add(self.ember)
