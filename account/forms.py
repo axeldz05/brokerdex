@@ -71,7 +71,7 @@ class AccountUpdateForm(forms.ModelForm):
 
 class AccountRegistrationForm(UserCreationForm):
     username = forms.CharField(
-        max_length=254,
+        max_length=20,
         required=True,
         widget=forms.TextInput(attrs={
             'class': 'form-control',
@@ -109,7 +109,7 @@ class AccountRegistrationForm(UserCreationForm):
 
     def clean_email(self):
         email = self.cleaned_data.get('email')
-        if Account.objects.filter(email=email).exists():
+        if Account.objects.filter(email__iexact=email).exists():
             raise ValidationError("An account with this email already exists.")
         return email
     def clean_username(self):
