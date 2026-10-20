@@ -21,10 +21,10 @@ WORKDIR /app
 
 # Cache dependency layer
 COPY pyproject.toml uv.lock .python-version ./
-RUN uv sync --frozen --no-install-project
+RUN uv sync --frozen --no-install-project --group analytics
 
 # Copy project source
 COPY . .
-RUN uv sync --frozen
+RUN uv sync --frozen --group analytics
 
 EXPOSE 8000
