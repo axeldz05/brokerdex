@@ -684,3 +684,11 @@ class ModelValidationTestCase(TestCase):
                 owner=self.account, creature=self.creature,
                 quantity=Decimal('3'), average_cost=Decimal('60.00')
             )
+
+    def test_trading_order_forms_allow_fractional_quantities_in_widget(self):
+        from .forms import MarketOrderForm, LimitOrderForm
+        for form_cls in (MarketOrderForm, LimitOrderForm):
+            form = form_cls()
+            widget_attrs = form.fields['quantity'].widget.attrs
+            self.assertEqual(widget_attrs.get('step'), 'any')
+            self.assertEqual(Decimal(widget_attrs.get('min')), Decimal('0.00000001'))
