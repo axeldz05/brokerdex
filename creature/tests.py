@@ -41,6 +41,37 @@ class CreatureAndBattleTests(TestCase):
         self.charmander.remove_ability(self.ember)
         self.assertFalse(self.charmander.abilities.filter(id=self.ember.id).exists())
 
+    def test_creature_admin_form_initial_and_save(self):
+        from creature.admin import CreatureForm
+        self.charmander.abilities.add(self.scratch)
+        form = CreatureForm(instance=self.charmander)
+        self.assertIn(self.scratch, form.fields['abilities'].initial)
+
+        # Test form submission and save
+        data = {
+            'name': 'Charmander Updated',
+            'description': 'A fire creature',
+            'type': self.charmander.type,
+            'current_price': '105.00',
+            'previous_close': '100.00',
+            'hp': 39,
+            'attack': 52,
+            'defense': 43,
+            'special_attack': 60,
+            'special_defense': 50,
+            'speed': 65,
+            'battle_cooldown': '01:00:00',
+            'cooldown_expires_at': '2026-10-20 00:00:00',
+            'elo_rating': 1000,
+            'wins': 0,
+            'losses': 0,
+            'abilities': [str(self.scratch.pk), str(self.ember.pk)],
+        }
+        bound_form = CreatureForm(data=data, instance=self.charmander)
+        self.assertTrue(bound_form.is_valid(), bound_form.errors)
+        saved = bound_form.save()
+        self.assertEqual(saved.abilities.count(), 2)
+
     def test_creature_can_have_up_to_4_abilities(self):
         self.charmander.abilities.add(self.scratch)
         self.charmander.abilities.add(self.ember)

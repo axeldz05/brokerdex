@@ -21,13 +21,10 @@ class CreatureForm(forms.ModelForm):
         model = Creature 
         fields = '__all__'
 
-    def clean_abilities(self):
-        return [ability.pk for ability in self.cleaned_data['abilities']]
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if self.instance and self.instance.pk:
-            self.fields['abilities'].initial = Ability.objects.filter(pk__in=self.instance.abilities)
+            self.fields['abilities'].initial = self.instance.abilities.all()
 
 @admin.register(Creature)
 class CreatureAdmin(admin.ModelAdmin):
@@ -38,9 +35,10 @@ def import_csv(csv_file, batch_size=1000):
         reader = csv.DictReader(f)
         batch = []
         for row in reader:
-            batch.append(Creature(
-                **{field: row[field] for field in row if field != 'id'}
-            ))
+            data = {field: row[field] for field in row if field != 'id'}
+            if 'pricing_reference_price' not in data and 'current_price' in data:
+                data['pricing_reference_price'] = data['current_price']
+            batch.append(Creature(**data))
             if len(batch) > batch_size:
                 with transaction.atomic():
                     Creature.objects.bulk_create(batch)
