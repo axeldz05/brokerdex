@@ -137,13 +137,7 @@ class Creature(models.Model):
 
     def save(self, *args, **kwargs):
         if self.pricing_reference_price is None:
-            rarity = Decimal('1.0')
-            if self.is_mythical:
-                rarity = Decimal('2.0')
-            elif self.is_legendary:
-                rarity = Decimal('1.5')
-            from account.money import quantize_money
-            self.pricing_reference_price = quantize_money(self.current_price / rarity)
+            self.pricing_reference_price = self.current_price
             update_fields = kwargs.get('update_fields')
             if update_fields is not None:
                 kwargs['update_fields'] = set(update_fields) | {
