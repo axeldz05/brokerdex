@@ -950,12 +950,25 @@ document.querySelectorAll('.portfolio-table tbody tr').forEach(row => {
 </script>
 {% endif %}
 
+{{ income_data_json|json_script:"income-data-json" }}
+{{ expenses_data_json|json_script:"expenses-data-json" }}
+{{ net_data_json|json_script:"net-data-json" }}
+
 <script>
 // --- Income & Expenses Chart ---
 let ieChart = null;
-const incomeRaw = JSON.parse('{{ income_data_json|safe }}');
-const expensesRaw = JSON.parse('{{ expenses_data_json|safe }}');
-const netRaw = JSON.parse('{{ net_data_json|safe }}');
+let incomeRaw = JSON.parse(document.getElementById('income-data-json').textContent);
+if (typeof incomeRaw === 'string') {
+    incomeRaw = JSON.parse(incomeRaw);
+}
+let expensesRaw = JSON.parse(document.getElementById('expenses-data-json').textContent);
+if (typeof expensesRaw === 'string') {
+    expensesRaw = JSON.parse(expensesRaw);
+}
+let netRaw = JSON.parse(document.getElementById('net-data-json').textContent);
+if (typeof netRaw === 'string') {
+    netRaw = JSON.parse(netRaw);
+}
 
 function buildIEChart() {
     const ctx = document.getElementById('incomeExpensesChart');

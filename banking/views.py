@@ -117,10 +117,31 @@ def withdraw(request):
     return render(request, 'withdraw.html', context)
 
 
+_INVEST_SORT_FIELDS = {
+    'name': 'name',
+    'price': 'current_price',
+    'change': 'previous_close',
+    'type': 'type',
+}
+
+
 @login_required
 def invest(request):
+    sort_by = request.GET.get('sort_by', 'name')
+    sort_order = request.GET.get('sort_order', 'asc')
+
+    field_name = _INVEST_SORT_FIELDS.get(sort_by, 'name')
+    if sort_order not in ('asc', 'desc'):
+        sort_order = 'asc'
+        sort_by = 'name'
+        field_name = 'name'
+
+    order_prefix = '-' if sort_order == 'desc' else ''
+    creatures = Creature.objects.all().order_by(f"{order_prefix}{field_name}", 'id')
     return render(request, 'invest.html', {
-        'creatures': Creature.objects.all()
+        'creatures': creatures,
+        'sort_by': sort_by,
+        'sort_order': sort_order,
     })
 
 

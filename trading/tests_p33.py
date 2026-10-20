@@ -111,6 +111,28 @@ class TradingAccessibilityMarkupTests(TestCase):
         self.assertContains(response, 'id="incomeExpensesChartRegion"')
         self.assertContains(response, 'id="incomeExpensesFallback"')
 
+    def test_portfolio_uses_secure_json_script_for_chart_data(self):
+        response = self.client.get(reverse('trading:portfolio'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            '<script id="income-data-json" type="application/json">',
+        )
+        self.assertContains(
+            response,
+            '<script id="expenses-data-json" type="application/json">',
+        )
+        self.assertContains(
+            response,
+            '<script id="net-data-json" type="application/json">',
+        )
+        content = response.content.decode()
+        self.assertNotIn("income_data_json|safe", content)
+        self.assertNotIn("expenses_data_json|safe", content)
+        self.assertNotIn("net_data_json|safe", content)
+        self.assertIn("document.getElementById('income-data-json')", content)
+
     def test_secondary_pages_expose_named_actions_and_semantic_groups(self):
         orders = self.client.get(reverse('trading:orders'))
         notifications = self.client.get(reverse('trading:notifications'))

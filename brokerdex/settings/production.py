@@ -21,12 +21,24 @@ DATABASES = {
 CELERY_BROKER_URL = env("REDIS_URL")
 CELERY_RESULT_BACKEND = CELERY_BROKER_URL
 
+_default_cache_url = (
+    CELERY_BROKER_URL[:-1] + "1"
+    if CELERY_BROKER_URL.endswith("/0")
+    else "redis://localhost:6379/1"
+)
+REDIS_CACHE_URL = env("REDIS_CACHE_URL", default=_default_cache_url)
+
 CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.redis.RedisCache",
-        "LOCATION": env("REDIS_CACHE_URL", default=CELERY_BROKER_URL),
-        "KEY_PREFIX": "brokerdex",
+        "LOCATION": REDIS_CACHE_URL,
+        "KEY_PREFIX": "brokerdex_cache",
         "TIMEOUT": 300,
+        "OPTIONS": {
+            "socket_timeout": 2.0,
+            "socket_connect_timeout": 2.0,
+            "retry_on_timeout": True,
+        },
     }
 }
 

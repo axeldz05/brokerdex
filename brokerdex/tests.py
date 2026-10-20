@@ -25,6 +25,7 @@ class SettingsModulesTests(SimpleTestCase):
         "DJANGO_SECURE_HSTS_SECONDS",
         "DJANGO_SECURE_SSL_REDIRECT",
         "DJANGO_SESSION_COOKIE_SECURE",
+        "REDIS_CACHE_URL",
         "REDIS_URL",
         "TEST_DATABASE_URL",
     )
@@ -145,6 +146,104 @@ class SettingsModulesTests(SimpleTestCase):
                 "database_name": "external_db",
                 "hosts": ["local.example.com", "127.0.0.1"],
                 "redis": "redis://localhost:6379/14",
+            },
+        )
+
+    def test_local_settings_redis_isolation_and_timeouts(self):
+        configuration = self._load_settings(
+            "brokerdex.settings.local",
+            "{"
+            "'broker_url': settings.CELERY_BROKER_URL, "
+            "'cache_url': settings.REDIS_CACHE_URL, "
+            "'cache_location': settings.CACHES['default']['LOCATION'], "
+            "'cache_prefix': settings.CACHES['default']['KEY_PREFIX'], "
+            "'cache_options': settings.CACHES['default'].get('OPTIONS', {})"
+            "}",
+        )
+
+        self.assertEqual(
+            configuration,
+            {
+                "broker_url": "redis://localhost:6379/0",
+                "cache_url": "redis://localhost:6379/1",
+                "cache_location": "redis://localhost:6379/1",
+                "cache_prefix": "brokerdex_cache",
+                "cache_options": {
+                    "socket_timeout": 2.0,
+                    "socket_connect_timeout": 2.0,
+                    "retry_on_timeout": True,
+                },
+            },
+        )
+
+    def test_production_settings_redis_isolation_and_timeouts(self):
+        config_default = self._load_settings(
+            "brokerdex.settings.production",
+            "{"
+            "'broker_url': settings.CELERY_BROKER_URL, "
+            "'cache_url': settings.REDIS_CACHE_URL, "
+            "'cache_location': settings.CACHES['default']['LOCATION'], "
+            "'cache_prefix': settings.CACHES['default']['KEY_PREFIX'], "
+            "'cache_options': settings.CACHES['default'].get('OPTIONS', {})"
+            "}",
+            **{**self.PRODUCTION_ENVIRONMENT, "REDIS_URL": "redis://prod-redis:6379/0"},
+        )
+        self.assertEqual(
+            config_default,
+            {
+                "broker_url": "redis://prod-redis:6379/0",
+                "cache_url": "redis://prod-redis:6379/1",
+                "cache_location": "redis://prod-redis:6379/1",
+                "cache_prefix": "brokerdex_cache",
+                "cache_options": {
+                    "socket_timeout": 2.0,
+                    "socket_connect_timeout": 2.0,
+                    "retry_on_timeout": True,
+                },
+            },
+        )
+
+        config_explicit = self._load_settings(
+            "brokerdex.settings.production",
+            "{"
+            "'broker_url': settings.CELERY_BROKER_URL, "
+            "'cache_url': settings.REDIS_CACHE_URL, "
+            "'cache_location': settings.CACHES['default']['LOCATION']"
+            "}",
+            **{
+                **self.PRODUCTION_ENVIRONMENT,
+                "REDIS_CACHE_URL": "redis://cache-redis:6379/2",
+            },
+        )
+        self.assertEqual(
+            config_explicit,
+            {
+                "broker_url": "redis://localhost:6379/15",
+                "cache_url": "redis://cache-redis:6379/2",
+                "cache_location": "redis://cache-redis:6379/2",
+            },
+        )
+
+    def test_base_settings_celery_transport_and_results(self):
+        configuration = self._load_settings(
+            "brokerdex.settings.base",
+            "{"
+            "'ignore_result': settings.CELERY_TASK_IGNORE_RESULT, "
+            "'result_expires': settings.CELERY_RESULT_EXPIRES, "
+            "'transport_options': settings.CELERY_BROKER_TRANSPORT_OPTIONS"
+            "}",
+        )
+
+        self.assertEqual(
+            configuration,
+            {
+                "ignore_result": True,
+                "result_expires": 3600,
+                "transport_options": {
+                    "socket_timeout": 5.0,
+                    "socket_connect_timeout": 5.0,
+                    "retry_on_timeout": True,
+                },
             },
         )
 

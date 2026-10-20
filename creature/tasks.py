@@ -1,6 +1,7 @@
 from celery import shared_task
 from django.conf import settings
 from django.db import OperationalError
+from django.utils import timezone
 from redis.exceptions import ConnectionError as RedisConnectionError
 
 from brokerdex.locks import prevent_task_overlap
@@ -13,12 +14,30 @@ from .services import (
     TrainingService,
 )
 
-_TRANSIENT_TRAINING_ERRORS = (
+_TRANSIENT_TASK_ERRORS = (
     ConnectionError,
     OperationalError,
     RedisConnectionError,
     TimeoutError,
 )
+_TRANSIENT_TRAINING_ERRORS = _TRANSIENT_TASK_ERRORS
+
+
+def _schedule_battle_turn(task, battle_id, current_turn, countdown):
+    try:
+        process_battle_turn.apply_async(
+            args=[battle_id, current_turn],
+            countdown=countdown,
+        )
+    except _TRANSIENT_TASK_ERRORS as error:
+        if (
+            hasattr(task, 'request')
+            and hasattr(task, 'max_retries')
+            and task.max_retries is not None
+            and task.request.retries < task.max_retries
+        ):
+            raise task.retry(exc=error)
+        raise
 
 
 @shared_task
@@ -44,23 +63,41 @@ def matchmake_random_battle():
 
 
 @shared_task(
-    autoretry_for=(RedisConnectionError,),
+    bind=True,
+    autoretry_for=_TRANSIENT_TASK_ERRORS,
     retry_backoff=True,
     max_retries=3,
 )
-def process_battle_turn(battle_id, expected_turn=None):
+def process_battle_turn(self, battle_id, expected_turn=None):
     result = BattleService.process_turn(battle_id, expected_turn)
     battle = result['battle']
     if not result['processed']:
+        if battle.status == 'active':
+            turn_interval = getattr(settings, 'BATTLE_TURN_INTERVAL', 180)
+            countdown = turn_interval
+            next_turn_at = getattr(battle, 'next_turn_at', None)
+            if next_turn_at:
+                remaining = int(
+                    (next_turn_at - timezone.now()).total_seconds()
+                )
+                countdown = max(0, remaining)
+            _schedule_battle_turn(
+                self,
+                battle.id,
+                battle.current_turn,
+                countdown,
+            )
         return (
             f"Battle {battle.id} turn "
             f"{expected_turn or battle.current_turn} was already processed."
         )
     if battle.status == 'active':
         turn_interval = getattr(settings, 'BATTLE_TURN_INTERVAL', 180)
-        process_battle_turn.apply_async(
-            args=[battle.id, battle.current_turn],
-            countdown=turn_interval,
+        _schedule_battle_turn(
+            self,
+            battle.id,
+            battle.current_turn,
+            turn_interval,
         )
         return (
             f"Turn {result.get('turn_number', battle.current_turn - 1)} "

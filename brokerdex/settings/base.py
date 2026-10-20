@@ -163,6 +163,13 @@ LOGIN_URL = "/account/login/"
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_TIMEZONE = TIME_ZONE
+CELERY_TASK_IGNORE_RESULT = True
+CELERY_RESULT_EXPIRES = 3600
+CELERY_BROKER_TRANSPORT_OPTIONS = {
+    "socket_timeout": 5.0,
+    "socket_connect_timeout": 5.0,
+    "retry_on_timeout": True,
+}
 
 CACHES = {
     "default": {
