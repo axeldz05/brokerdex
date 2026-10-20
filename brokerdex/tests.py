@@ -25,6 +25,7 @@ class SettingsModulesTests(SimpleTestCase):
         "DJANGO_SECURE_HSTS_SECONDS",
         "DJANGO_SECURE_SSL_REDIRECT",
         "DJANGO_SESSION_COOKIE_SECURE",
+        "DJANGO_TRUST_X_FORWARDED_FOR",
         "REDIS_CACHE_URL",
         "REDIS_URL",
         "TEST_DATABASE_URL",
@@ -246,6 +247,43 @@ class SettingsModulesTests(SimpleTestCase):
                 },
             },
         )
+
+    def test_base_settings_ratelimit_defaults(self):
+        configuration = self._load_settings(
+            "brokerdex.settings.base",
+            "{"
+            "'ratelimit_view': settings.RATELIMIT_VIEW, "
+            "'ratelimit_use_cache': settings.RATELIMIT_USE_CACHE, "
+            "'ratelimit_ip_meta_key': settings.RATELIMIT_IP_META_KEY"
+            "}",
+        )
+
+        self.assertEqual(
+            configuration,
+            {
+                "ratelimit_view": "brokerdex.views.ratelimited_view",
+                "ratelimit_use_cache": "default",
+                "ratelimit_ip_meta_key": "REMOTE_ADDR",
+            },
+        )
+
+    def test_production_settings_trusted_proxy_ratelimit(self):
+        default_meta = self._load_settings(
+            "brokerdex.settings.production",
+            "settings.RATELIMIT_IP_META_KEY",
+            **self.PRODUCTION_ENVIRONMENT,
+        )
+        self.assertEqual(default_meta, "REMOTE_ADDR")
+
+        forwarded_meta = self._load_settings(
+            "brokerdex.settings.production",
+            "settings.RATELIMIT_IP_META_KEY",
+            **{
+                **self.PRODUCTION_ENVIRONMENT,
+                "DJANGO_TRUST_X_FORWARDED_FOR": "True",
+            },
+        )
+        self.assertEqual(forwarded_meta, "HTTP_X_FORWARDED_FOR")
 
     def test_base_uses_django_52_storage_configuration(self):
         configuration = self._load_settings(
