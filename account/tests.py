@@ -462,3 +462,30 @@ class AccountIdentifierConcurrencyTests(TransactionTestCase):
             ).values("alias").distinct().count(),
             2,
         )
+
+
+class LogoutViewTests(TestCase):
+    def setUp(self):
+        self.user = Account.objects.create_user(
+            username="logoutuser",
+            email="logout@example.com",
+            password="testpass123",
+        )
+        self.logout_url = reverse("account:logout")
+
+    def test_get_logout_returns_method_not_allowed(self):
+        self.client.force_login(self.user)
+        response = self.client.get(self.logout_url)
+        self.assertEqual(response.status_code, 405)
+
+    def test_post_logout_unauthenticated_redirects_to_login(self):
+        response = self.client.post(self.logout_url)
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(reverse("account:login"), response.headers["Location"])
+
+    def test_post_logout_authenticated_logs_out_and_redirects_to_index(self):
+        self.client.force_login(self.user)
+        response = self.client.post(self.logout_url)
+        self.assertRedirects(response, reverse("index"))
+        # Verify session is flushed/logged out
+        self.assertNotIn("_auth_user_id", self.client.session)

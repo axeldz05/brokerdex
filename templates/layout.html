@@ -378,7 +378,12 @@
                             <ul class="dropdown-menu dropdown-menu-end">
                                 <li><a class="dropdown-item" href="{% url 'account:settings' %}"{% if current_view == 'account:settings' %} aria-current="page"{% endif %}>Settings</a></li>
                                 <li><hr class="dropdown-divider" style="border-color:var(--border-color)"></li>
-                                <li><a class="dropdown-item" href="{% url 'account:logout' %}">Sign Out</a></li>
+                                <li>
+                                    <form method="post" action="{% url 'account:logout' %}" class="m-0 p-0">
+                                        {% csrf_token %}
+                                        <button type="submit" class="dropdown-item">Sign Out</button>
+                                    </form>
+                                </li>
                             </ul>
                         </li>
                         {% endif %}

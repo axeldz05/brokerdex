@@ -7,6 +7,7 @@ from django.contrib.auth import (
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import PasswordChangeForm
 from django.shortcuts import redirect, render
+from django.views.decorators.http import require_POST
 from django_ratelimit.decorators import ratelimit
 
 from .forms import (
@@ -53,10 +54,11 @@ def register(request):
     
     return render(request, 'account/register.html', {'form': form})
 
+@require_POST
 @login_required
 def log_out(request):
     logout(request)
-    return render(request,'index.html')
+    return redirect('index')
 
 @login_required
 def settings(request):
