@@ -1,13 +1,8 @@
 {% extends "layout.html" %}
+{% load static %}
 
 {% block content %}
-
-{% load static %}
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pokemons</title>
-    <style>
+<style>
     :root {
         --positive-color: #10b981;
         --negative-color: #ef4444;
@@ -190,7 +185,6 @@
         pointer-events: none;
     }
     </style>
-</head>
 <div class="container-fluid py-4">
     <div class="row">
         <div class="col-12">
@@ -355,7 +349,14 @@ document.querySelectorAll('.creature-row').forEach(row => {
         this.classList.add('loading-row');
         const spinner = document.createElement('div');
         spinner.className = 'spinner-border spinner-border-sm text-primary ms-2';
-        this.querySelector('.creature-symbol').appendChild(spinner);
+        const nameElement = this.querySelector('.creature-name');
+        if (nameElement) {
+            nameElement.appendChild(spinner);
+        }
+        const creatureId = this.dataset.creatureId;
+        if (creatureId) {
+            window.location.href = `/trading/creature/${creatureId}/`;
+        }
     });
 });
 

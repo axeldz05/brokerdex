@@ -11,6 +11,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from account.models import Account
+from creature.models import Creature, PrimaryType
 
 from .forms import TransferForm, WithdrawForm
 from .models import Transfer
@@ -574,3 +575,132 @@ class ConcurrentTransferTestCase(TransactionTestCase):
             1,
         )
         self.assertEqual(len(errors), 1)
+
+
+class InvestViewTests(TestCase):
+    def setUp(self):
+        self.user = Account.objects.create_user(
+            username="investor",
+            email="investor@example.com",
+            password="testpass123",
+        )
+        self.c1 = Creature.objects.create(
+            name="Charmander",
+            description="Fire lizard",
+            type=PrimaryType.FIRE,
+            current_price=Decimal("50.00"),
+            previous_close=Decimal("40.00"),
+            pricing_reference_price=Decimal("50.00"),
+            hp=39,
+            attack=52,
+            defense=43,
+            special_attack=60,
+            special_defense=50,
+            speed=65,
+        )
+        self.c2 = Creature.objects.create(
+            name="Bulbasaur",
+            description="Seed dinosaur",
+            type=PrimaryType.GRASS,
+            current_price=Decimal("80.00"),
+            previous_close=Decimal("90.00"),
+            pricing_reference_price=Decimal("80.00"),
+            hp=45,
+            attack=49,
+            defense=49,
+            special_attack=65,
+            special_defense=65,
+            speed=45,
+        )
+        self.c3 = Creature.objects.create(
+            name="Squirtle",
+            description="Tiny turtle",
+            type=PrimaryType.WATER,
+            current_price=Decimal("60.00"),
+            previous_close=Decimal("70.00"),
+            pricing_reference_price=Decimal("60.00"),
+            hp=44,
+            attack=48,
+            defense=65,
+            special_attack=50,
+            special_defense=64,
+            speed=43,
+        )
+
+    def test_invest_requires_login(self):
+        response = self.client.get(reverse("banking:invest"))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/account/login/", response.url)
+
+    def test_invest_default_sorting_by_name_asc(self):
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("banking:invest"))
+        self.assertEqual(response.status_code, 200)
+        creatures = list(response.context["creatures"])
+        names = [c.name for c in creatures]
+        self.assertEqual(names, ["Bulbasaur", "Charmander", "Squirtle"])
+
+    def test_invest_sorting_by_price_desc(self):
+        self.client.force_login(self.user)
+        response = self.client.get(
+            reverse("banking:invest"),
+            {"sort_by": "price", "sort_order": "desc"},
+        )
+        self.assertEqual(response.status_code, 200)
+        creatures = list(response.context["creatures"])
+        names = [c.name for c in creatures]
+        self.assertEqual(names, ["Bulbasaur", "Squirtle", "Charmander"])
+
+    def test_invest_sorting_by_price_asc(self):
+        self.client.force_login(self.user)
+        response = self.client.get(
+            reverse("banking:invest"),
+            {"sort_by": "price", "sort_order": "asc"},
+        )
+        self.assertEqual(response.status_code, 200)
+        creatures = list(response.context["creatures"])
+        names = [c.name for c in creatures]
+        self.assertEqual(names, ["Charmander", "Squirtle", "Bulbasaur"])
+
+    def test_invest_sorting_by_change_desc(self):
+        self.client.force_login(self.user)
+        response = self.client.get(
+            reverse("banking:invest"),
+            {"sort_by": "change", "sort_order": "desc"},
+        )
+        self.assertEqual(response.status_code, 200)
+        creatures = list(response.context["creatures"])
+        names = [c.name for c in creatures]
+        self.assertEqual(names, ["Bulbasaur", "Squirtle", "Charmander"])
+
+    def test_invest_sorting_by_type_asc(self):
+        self.client.force_login(self.user)
+        response = self.client.get(
+            reverse("banking:invest"),
+            {"sort_by": "type", "sort_order": "asc"},
+        )
+        self.assertEqual(response.status_code, 200)
+        creatures = list(response.context["creatures"])
+        types = [c.type for c in creatures]
+        self.assertEqual(types, ["fire", "grass", "water"])
+
+    def test_invest_invalid_params_fallback(self):
+        self.client.force_login(self.user)
+        response = self.client.get(
+            reverse("banking:invest"),
+            {"sort_by": "unknown_column", "sort_order": "sideways"},
+        )
+        self.assertEqual(response.status_code, 200)
+        creatures = list(response.context["creatures"])
+        names = [c.name for c in creatures]
+        self.assertEqual(names, ["Bulbasaur", "Charmander", "Squirtle"])
+
+    def test_invest_template_sanitized_and_creature_links(self):
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("banking:invest"))
+        content = response.content.decode()
+        self.assertNotIn("<title>Pokemons</title>", content)
+        self.assertNotIn("<head>", content.split('id="main-content"')[1])
+        self.assertIn("/trading/creature/", content)
+        self.assertIn(".creature-name", content)
+        self.assertNotIn("this.querySelector('.creature-symbol')", content)
