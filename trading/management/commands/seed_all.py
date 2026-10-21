@@ -150,12 +150,7 @@ class Command(BaseCommand):
             initial_price = Decimal(str(data['initial_price']))
             is_mythical = data.get('is_mythical', False)
             is_legendary = data.get('is_legendary', False)
-            rarity = Decimal('1.0')
-            if is_mythical:
-                rarity = Decimal('2.0')
-            elif is_legendary:
-                rarity = Decimal('1.5')
-            ref_price = quantize_money(initial_price / rarity)
+            ref_price = quantize_money(data.get('pricing_reference_price', initial_price))
 
             reserve_cents = dollars_to_cents(ref_price * 1000)
             pool_supply = Decimal('1000.00000000')

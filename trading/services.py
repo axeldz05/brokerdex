@@ -29,14 +29,15 @@ class PricingEngine:
     """
     Dynamic Pricing Engine.
     Formula:
-    price = reference_price × (1 + Δ_market) × rarity_multiplier
+    price = reference_price × (1 + Δ_market)
 
     - battle outcomes persist an ELO-derived shock in reference_price
-    - Δ_market: buy/sell volume ratio from recent trades
-    - rarity_multiplier: legendary/mythical premium
+    - Δ_market: Order Flow Imbalance (OFI) based on taker aggressor side
+    - Static rarity multiplier R is eliminated from spot price (reflected in reference_price & reserves)
     """
 
     MARKET_WEIGHT = Decimal('0.05')    # max ±5% from market pressure
+    DAMPING_VOLUME = Decimal('10.0')   # V0 > 0 damping constant
     RARITY_LEGENDARY = Decimal('1.5')
     RARITY_MYTHICAL = Decimal('2.0')
     RARITY_NORMAL = Decimal('1.0')
@@ -49,13 +50,16 @@ class PricingEngine:
             return PricingEngine.RARITY_LEGENDARY
         return PricingEngine.RARITY_NORMAL
 
-    @staticmethod
-    def calculate_market_delta(creature):
+    @classmethod
+    def calculate_market_delta(cls, creature, v0=None):
         """
-        Compute Δ_market from buy vs sell volume in the last 24 hours.
-        More buys → positive pressure → price up.
-        More sells → negative pressure → price down.
+        Compute Δ_market from Order Flow Imbalance (OFI) in the last 24 hours.
+        V_buy: volume where aggressor_side == BUY
+        V_sell: volume where aggressor_side == SELL
+        Damping constant V0 > 0 in the denominator.
         """
+        if v0 is None:
+            v0 = cls.DAMPING_VOLUME
         since = timezone.now() - timezone.timedelta(hours=24)
         recent_trades = Trade.objects.filter(
             creature=creature,
@@ -63,13 +67,13 @@ class PricingEngine:
         )
 
         buy_volume = recent_trades.filter(
-            buyer__isnull=False
+            aggressor_side=Trade.AggressorSide.BUY
         ).aggregate(
             total=Sum('quantity')
         )['total'] or Decimal('0')
 
         sell_volume = recent_trades.filter(
-            seller__isnull=False
+            aggressor_side=Trade.AggressorSide.SELL
         ).aggregate(
             total=Sum('quantity')
         )['total'] or Decimal('0')
@@ -78,26 +82,27 @@ class PricingEngine:
         if total_volume == 0:
             return Decimal('0')
 
-        # Ratio centered at 0: all buys → +MARKET_WEIGHT, all sells →
-        # -MARKET_WEIGHT
-        buy_ratio = buy_volume / total_volume
-        delta = (buy_ratio - Decimal('0.5')) * 2 * PricingEngine.MARKET_WEIGHT
+        denominator = total_volume + Decimal(str(v0))
+        raw_delta = cls.MARKET_WEIGHT * (
+            (buy_volume - sell_volume) / denominator
+        )
+        delta = max(min(raw_delta, cls.MARKET_WEIGHT), -cls.MARKET_WEIGHT)
         return delta
 
     @classmethod
     def calculate_price(cls, creature):
         """
         Calculate the new dynamic price for a creature.
+        Rarity is reflected in pricing_reference_price, initial reserves, and base stats.
+        Static rarity multiplier R is eliminated from spot price calculation.
         """
         base_price = (
             creature.pricing_reference_price
             or creature.current_price
         )
         market_delta = cls.calculate_market_delta(creature)
-        rarity = cls.get_rarity_multiplier(creature)
 
-        multiplier = (1 + market_delta) * rarity
-        new_price = base_price * multiplier
+        new_price = base_price * (Decimal('1') + market_delta)
 
         # Floor at $0.01, cap at Decimal(12,2) max to avoid DB overflow
         MAX_PRICE = Decimal('9999999999.99')
@@ -624,12 +629,31 @@ class TradingEngine:
                 'status',
             ])
 
+        if buy_order is not None and buy_order.execution_type == Order.ExecutionType.MARKET:
+            aggressor_side = Trade.AggressorSide.BUY
+        elif sell_order is not None and sell_order.execution_type == Order.ExecutionType.MARKET:
+            aggressor_side = Trade.AggressorSide.SELL
+        elif buyer is None:
+            aggressor_side = Trade.AggressorSide.SELL
+        elif seller is None:
+            aggressor_side = Trade.AggressorSide.BUY
+        elif buy_order is not None and sell_order is not None:
+            b_time = (buy_order.created_at, str(buy_order.pk))
+            s_time = (sell_order.created_at, str(sell_order.pk))
+            if b_time < s_time:
+                aggressor_side = Trade.AggressorSide.SELL
+            else:
+                aggressor_side = Trade.AggressorSide.BUY
+        else:
+            aggressor_side = Trade.AggressorSide.BUY
+
         return Trade.objects.create(
             buyer=buyer,
             seller=seller,
             creature=locked_creature,
             buy_order=buy_order,
             sell_order=sell_order,
+            aggressor_side=aggressor_side,
             quantity=quantity,
             price_per_unit=price,
             commission=commission,

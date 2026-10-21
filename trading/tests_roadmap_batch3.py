@@ -68,9 +68,9 @@ class StablePricingTests(BatchThreeTestCase):
         creature.refresh_from_db()
         self.assertEqual(
             prices,
-            [Decimal('150.00'), Decimal('150.00'), Decimal('150.00')],
+            [Decimal('100.00'), Decimal('100.00'), Decimal('100.00')],
         )
-        self.assertEqual(creature.current_price, Decimal('150.00'))
+        self.assertEqual(creature.current_price, Decimal('100.00'))
 
     def test_dynamic_price_rounds_half_up_at_money_boundary(self):
         creature = self.create_creature(
@@ -81,7 +81,7 @@ class StablePricingTests(BatchThreeTestCase):
 
         self.assertEqual(
             PricingEngine.calculate_price(creature),
-            Decimal('1.55'),
+            Decimal('1.03'),
         )
 
     def test_equal_buy_and_sell_volume_has_no_market_delta(self):

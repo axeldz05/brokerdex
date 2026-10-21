@@ -242,6 +242,10 @@ class Trade(models.Model):
     - seller is nullable to represent Market Maker (liquidity pool) trades.
     """
 
+    class AggressorSide(models.TextChoices):
+        BUY = 'BUY', 'Buy'
+        SELL = 'SELL', 'Sell'
+
     COMMISSION_RATE = Decimal('0.015')  # 1.5%
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -279,6 +283,13 @@ class Trade(models.Model):
         blank=True,
         related_name='trades_as_sell'
     )
+    aggressor_side = models.CharField(
+        max_length=4,
+        choices=AggressorSide.choices,
+        null=True,
+        blank=True,
+        help_text="Taker side that initiated the trade execution",
+    )
     quantity = models.DecimalField(max_digits=18, decimal_places=8)
     price_per_unit = models.DecimalField(max_digits=12, decimal_places=2)
     commission = models.DecimalField(
@@ -303,7 +314,25 @@ class Trade(models.Model):
         indexes = [
             models.Index(fields=['creature', 'executed_at']),
             models.Index(fields=['buyer', 'executed_at']),
+            models.Index(fields=['creature', 'executed_at', 'aggressor_side']),
         ]
+
+    def save(self, *args, **kwargs):
+        if not self.aggressor_side:
+            if self.buyer and not self.seller:
+                self.aggressor_side = self.AggressorSide.BUY
+            elif self.seller and not self.buyer:
+                self.aggressor_side = self.AggressorSide.SELL
+            elif self.buy_order and self.sell_order:
+                b_time = (self.buy_order.created_at, str(self.buy_order.pk))
+                s_time = (self.sell_order.created_at, str(self.sell_order.pk))
+                if b_time < s_time:
+                    self.aggressor_side = self.AggressorSide.SELL
+                else:
+                    self.aggressor_side = self.AggressorSide.BUY
+            else:
+                self.aggressor_side = self.AggressorSide.BUY
+        super().save(*args, **kwargs)
 
     @property
     def total_amount(self):

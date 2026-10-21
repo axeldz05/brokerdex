@@ -24,10 +24,10 @@ class OrderAdmin(admin.ModelAdmin):
 @admin.register(Trade)
 class TradeAdmin(admin.ModelAdmin):
     list_display = (
-        'creature', 'buyer', 'seller', 'quantity',
+        'creature', 'aggressor_side', 'buyer', 'seller', 'quantity',
         'price_per_unit', 'commission', 'executed_at'
     )
-    list_filter = ('creature__type',)
+    list_filter = ('creature__type', 'aggressor_side')
     search_fields = ('buyer__username', 'seller__username', 'creature__name')
     readonly_fields = ('id', 'executed_at')
 
