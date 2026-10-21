@@ -267,7 +267,9 @@ class IncubationIdempotencyTests(DeliveryFixtureMixin, TestCase):
         incubation.refresh_from_db()
         portfolio.refresh_from_db()
         self.assertEqual(incubation.status, Incubation.Status.HATCHED)
-        self.assertEqual(portfolio.quantity, Decimal('3'))
+        self.assertEqual(
+            portfolio.quantity, Decimal('2') + incubation.hatched_quantity
+        )
         self.assertEqual(
             Notification.objects.filter(
                 user=user,

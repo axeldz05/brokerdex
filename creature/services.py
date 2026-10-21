@@ -1,5 +1,6 @@
+import math
 import random
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from math import ceil
 
 from django.conf import settings
@@ -8,8 +9,15 @@ from django.db import transaction
 from django.db.models import Count, F, Q, Sum as models_Sum
 from django.utils import timezone
 
-from account.money import dollars_to_cents, quantize_money
+from account.money import (
+    cents_to_dollars,
+    dollars_to_cents,
+    quantize_money,
+    quantize_quantity,
+)
 from account.models import Account
+from banking.models import Transfer
+from trading.models import Notification, Portfolio, SystemTreasury
 from .models import (
     Battle,
     BattleAction,
@@ -17,8 +25,65 @@ from .models import (
     BattleParticipant,
     Creature,
     Incubation,
+    TrainingContribution,
+    TrainingFund,
+    TrainingSaturation,
     TrainingSession,
 )
+
+
+TYPE_ADVANTAGES = {
+    'fire': {'grass', 'ice', 'bug', 'steel'},
+    'water': {'fire', 'ground', 'rock'},
+    'grass': {'water', 'ground', 'rock'},
+    'electric': {'water', 'flying'},
+    'psychic': {'fighting', 'poison'},
+    'fighting': {'normal', 'ice', 'rock', 'dark', 'steel'},
+    'dark': {'psychic', 'ghost'},
+    'steel': {'ice', 'rock', 'fairy'},
+    'dragon': {'dragon'},
+    'fairy': {'fighting', 'dragon', 'dark'},
+    'normal': set(),
+    'flying': {'grass', 'fighting', 'bug'},
+    'ground': {'fire', 'electric', 'poison', 'rock', 'steel'},
+    'rock': {'fire', 'ice', 'flying', 'bug'},
+    'bug': {'grass', 'psychic', 'dark'},
+    'ghost': {'psychic', 'ghost'},
+    'ice': {'grass', 'ground', 'flying', 'dragon'},
+    'poison': {'grass', 'fairy'},
+}
+
+TYPE_DISADVANTAGES = {
+    'fire': {'water', 'rock', 'ground', 'dragon'},
+    'water': {'grass', 'electric', 'dragon'},
+    'grass': {'fire', 'ice', 'flying', 'bug', 'poison', 'steel', 'dragon'},
+    'electric': {'ground', 'grass', 'electric', 'dragon'},
+    'psychic': {'steel', 'psychic', 'dark'},
+    'fighting': {'flying', 'psychic', 'fairy', 'bug', 'poison'},
+    'dark': {'fighting', 'dark', 'fairy'},
+    'steel': {'fire', 'water', 'electric', 'steel'},
+    'dragon': {'steel', 'fairy'},
+    'fairy': {'fire', 'poison', 'steel'},
+    'normal': {'rock', 'steel', 'ghost'},
+    'flying': {'electric', 'rock', 'steel'},
+    'ground': {'grass', 'bug', 'flying'},
+    'rock': {'fighting', 'ground', 'steel'},
+    'bug': {'fire', 'fighting', 'flying', 'ghost', 'steel', 'fairy'},
+    'ghost': {'dark', 'normal'},
+    'ice': {'fire', 'water', 'ice', 'steel'},
+    'poison': {'poison', 'ground', 'rock', 'ghost', 'steel'},
+}
+
+
+def get_type_multiplier(attacker_type: str, defender_type: str) -> Decimal:
+    """Return 1.25 for advantage, 0.80 for disadvantage, 1.00 neutral."""
+    att = (attacker_type or '').lower()
+    dfn = (defender_type or '').lower()
+    if dfn in TYPE_ADVANTAGES.get(att, set()):
+        return Decimal('1.25')
+    if dfn in TYPE_DISADVANTAGES.get(att, set()):
+        return Decimal('0.80')
+    return Decimal('1.00')
 
 
 def _countdown_until(deadline, now):
@@ -94,11 +159,23 @@ class IncubationService:
             locked_user.balance_cents -= cost_cents
             locked_user.save(update_fields=['balance_cents'])
 
+            dividend_cents = int((Decimal(cost_cents) * Decimal('0.08')).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
+            equity_cents = int((Decimal(cost_cents) * Decimal('0.04')).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
+            reserve_cents = cost_cents - dividend_cents - equity_cents
+
+            treasury = SystemTreasury.get_for_update()
+            treasury.dividend_pool_cents += dividend_cents
+            treasury.company_equity_cents += equity_cents
+            treasury.save(update_fields=['dividend_pool_cents', 'company_equity_cents', 'updated_at'])
+
             hatches_at = timezone.now() + egg_template.hatch_duration
             incubation = Incubation.objects.create(
                 user=locked_user,
                 egg_template=egg_template,
                 hatches_at=hatches_at,
+                reserve_contribution_cents=reserve_cents,
+                dividend_cents=dividend_cents,
+                equity_cents=equity_cents,
             )
             transaction.on_commit(
                 lambda: cls.schedule_hatch(incubation.pk)
@@ -220,26 +297,48 @@ class IncubationService:
                 )
                 .first()
             )
+
+            roll = random.random()
+            if roll < 0.75:
+                z_factor = random.uniform(0.25, 0.80)
+            elif roll < 0.97:
+                z_factor = random.uniform(0.80, 2.20)
+            else:
+                z_factor = random.uniform(2.20, 12.00)
+
+            c_egg = cents_to_dollars(dollars_to_cents(incubation.egg_template.price))
+            p_spot = creature.current_price
+            if p_spot <= Decimal('0'):
+                p_spot = Decimal('1.00')
+            q_raw = (c_egg * Decimal(str(z_factor))) / p_spot
+            hatched_units = max(Decimal('0.00000001'), quantize_quantity(q_raw))
+
             if portfolio:
-                portfolio.quantity += Decimal('1')
+                portfolio.quantity += hatched_units
                 portfolio.save(update_fields=['quantity', 'updated_at'])
             else:
                 Portfolio.objects.create(
                     owner_id=incubation.user_id,
                     creature=creature,
-                    quantity=Decimal('1'),
+                    quantity=hatched_units,
                     average_cost=creature.current_price,
                 )
+
+            if incubation.reserve_contribution_cents > 0:
+                creature.reserve_cents += incubation.reserve_contribution_cents
+                creature.save(update_fields=['reserve_cents'])
 
             completed_at = timezone.now()
             incubation.status = Incubation.Status.HATCHED
             incubation.hatched_at = completed_at
             incubation.hatched_creature = creature
+            incubation.hatched_quantity = hatched_units
             incubation.completion_notified_at = completed_at
             incubation.save(update_fields=[
                 'status',
                 'hatched_at',
                 'hatched_creature',
+                'hatched_quantity',
                 'completion_notified_at',
             ])
 
@@ -276,6 +375,12 @@ class IncubationService:
             )
             account.save(update_fields=['balance_cents'])
 
+            if incubation.dividend_cents > 0 or incubation.equity_cents > 0:
+                treasury = SystemTreasury.get_for_update()
+                treasury.dividend_pool_cents = max(0, treasury.dividend_pool_cents - incubation.dividend_cents)
+                treasury.company_equity_cents = max(0, treasury.company_equity_cents - incubation.equity_cents)
+                treasury.save(update_fields=['dividend_pool_cents', 'company_equity_cents', 'updated_at'])
+
             failed_at = timezone.now()
             incubation.status = Incubation.Status.FAILED
             incubation.failed_at = failed_at
@@ -305,6 +410,17 @@ class BattleService:
 
     K_FACTOR = 32  # Standard ELO K-factor
     MAX_PRICE_CHANGE_PCT = Decimal('5.00')  # Max ±5% price swing from a battle
+    KAPPA = Decimal(str(math.log(1.05)))
+
+    @staticmethod
+    def calculate_combat_power(creature):
+        """Combine hp, attack, defense, special_attack, special_defense, speed."""
+        if not creature:
+            return Decimal('100')
+        return Decimal(str(
+            creature.hp + creature.attack + creature.defense +
+            creature.special_attack + creature.special_defense + creature.speed
+        ))
 
     @staticmethod
     def calculate_elo_change(rating_self, rating_opponent, score_self):
@@ -317,17 +433,42 @@ class BattleService:
         change = Decimal(str(BattleService.K_FACTOR)) * (Decimal(str(score_self)) - expected)
         return int(round(change))
 
-    @staticmethod
-    def calculate_potential_change(rating_self, rating_opponent):
+    @classmethod
+    def calculate_victory_expectation(cls, rating_self, rating_opponent, cp_self=None, cp_opponent=None):
         """
-        Calculate potential price change percentages based on ELO difference.
-        Returns (win_pct, lose_pct) as Decimal percentages.
-        win_pct: positive value change if this creature wins.
-        lose_pct: negative value change if this creature loses.
+        Calculate victory expectation E_i in [0, 1] incorporating ELO and relative Combat Power.
         """
-        expected = Decimal('1') / (Decimal('1') + Decimal('10') ** (Decimal(rating_opponent - rating_self) / Decimal('400')))
-        win_pct = ((Decimal('1') - expected) * BattleService.MAX_PRICE_CHANGE_PCT).quantize(Decimal('0.01'))
-        lose_pct = (-expected * BattleService.MAX_PRICE_CHANGE_PCT).quantize(Decimal('0.01'))
+        r_diff = Decimal(rating_opponent - rating_self)
+        if cp_self is not None and cp_opponent is not None:
+            cp_s = Decimal(str(cp_self))
+            cp_o = Decimal(str(cp_opponent))
+            cp_total = cp_s + cp_o
+            if cp_total > 0:
+                cp_diff = (cp_s - cp_o) / cp_total
+                r_diff -= Decimal('800') * cp_diff
+
+        expected = Decimal('1') / (
+            Decimal('1') + Decimal('10') ** (r_diff / Decimal('400'))
+        )
+        return expected
+
+    @classmethod
+    def calculate_potential_change(cls, rating_self, rating_opponent, cp_self=None, cp_opponent=None):
+        """
+        Calculate potential price change percentages based on expectation E_i.
+        Uses exponential symmetric shock:
+        win_pct = (exp(kappa * (1 - E_i)) - 1) * 100
+        lose_pct = (exp(kappa * (0 - E_i)) - 1) * 100
+        """
+        expected = cls.calculate_victory_expectation(
+            rating_self, rating_opponent, cp_self=cp_self, cp_opponent=cp_opponent
+        )
+        kappa = cls.KAPPA
+        win_factor = Decimal(str(math.exp(float(kappa * (Decimal('1') - expected)))))
+        lose_factor = Decimal(str(math.exp(float(kappa * (Decimal('0') - expected)))))
+
+        win_pct = ((win_factor - Decimal('1')) * Decimal('100')).quantize(Decimal('0.01'))
+        lose_pct = ((lose_factor - Decimal('1')) * Decimal('100')).quantize(Decimal('0.01'))
         return win_pct, lose_pct
 
     @staticmethod
@@ -347,20 +488,36 @@ class BattleService:
             'draw': (zero, zero),
         }
 
-    @staticmethod
-    def apply_reference_price_shock(creature, change_pct):
-        """Apply one persisted Decimal battle shock to a locked creature."""
-        if change_pct == 0:
+    @classmethod
+    def apply_reference_price_shock(cls, creature, score, expected=None, change_pct=None):
+        """
+        Apply exponential symmetric battle shock:
+        P_ref, final = quantize_money(P_ref, initial * exp(kappa * (score - expected)))
+        where score in {1, 0, 0.5}.
+        A draw (score = 0.5) leaves reference price unchanged.
+        """
+        if score == Decimal('0.5') or score == 0.5:
             return False
+
         reference_price = (
             creature.pricing_reference_price
             or creature.current_price
         )
-        creature.pricing_reference_price = quantize_money(
-            reference_price * (
-                Decimal('1') + change_pct / Decimal('100')
+
+        if expected is None:
+            if score == 0:
+                return False
+            creature.pricing_reference_price = quantize_money(
+                reference_price * (
+                    Decimal('1') + Decimal(str(score)) / Decimal('100')
+                )
             )
-        )
+            return True
+
+        kappa = cls.KAPPA
+        exponent = float(kappa * (Decimal(str(score)) - Decimal(str(expected))))
+        multiplier = Decimal(str(math.exp(exponent)))
+        creature.pricing_reference_price = quantize_money(reference_price * multiplier)
         return True
 
     @classmethod
@@ -401,11 +558,13 @@ class BattleService:
 
     @classmethod
     def _start_locked_battle(cls, creature_1, creature_2):
+        cp_1 = cls.calculate_combat_power(creature_1)
+        cp_2 = cls.calculate_combat_power(creature_2)
         win_1, _ = cls.calculate_potential_change(
-            creature_1.elo_rating, creature_2.elo_rating
+            creature_1.elo_rating, creature_2.elo_rating, cp_self=cp_1, cp_opponent=cp_2
         )
         win_2, _ = cls.calculate_potential_change(
-            creature_2.elo_rating, creature_1.elo_rating
+            creature_2.elo_rating, creature_1.elo_rating, cp_self=cp_2, cp_opponent=cp_1
         )
         price_shocks = cls.calculate_price_shocks(win_1, win_2)
 
@@ -489,10 +648,17 @@ class BattleService:
             if previous_turn >= 1:
                 cls.record_turn_investments(battle, previous_turn)
 
-            if turn_number % 2:
-                attacker, defender = participants
+            s1 = participants[0].creature.speed
+            s2 = participants[1].creature.speed
+            if s1 >= s2:
+                opener, responder = participants[0], participants[1]
             else:
-                defender, attacker = participants
+                opener, responder = participants[1], participants[0]
+
+            if turn_number % 2 == 1:
+                attacker, defender = opener, responder
+            else:
+                attacker, defender = responder, opener
 
             abilities = list(attacker.creature.abilities.all())
             if not abilities:
@@ -507,11 +673,34 @@ class BattleService:
                 else:
                     attack_stat = attacker.creature.attack
                     defense_stat = defender.creature.defense
+
+                elemental_mult = get_type_multiplier(
+                    attacker.creature.type, defender.creature.type
+                )
                 raw_damage = (
                     power * attack_stat / max(defense_stat, 1)
-                ) / 2.5
-                random_factor = random.randint(85, 100) / 100.0
-                damage = max(1, int(raw_damage * random_factor))
+                ) / 2.5 * float(elemental_mult)
+
+                # Speed ratio for critical hit / evasion
+                att_speed = max(1, attacker.creature.speed)
+                def_speed = max(1, defender.creature.speed)
+                speed_ratio = att_speed / (att_speed + def_speed)
+
+                # Evasion check: if defender has higher speed
+                evasion_chance = 0.0
+                if def_speed > att_speed:
+                    evasion_chance = min(
+                        0.20,
+                        ((def_speed - att_speed) / (att_speed + def_speed)) * 0.25,
+                    )
+
+                if random.random() < evasion_chance:
+                    damage = 0
+                else:
+                    crit_chance = min(0.30, max(0.05, speed_ratio * 0.20))
+                    crit_mult = 1.5 if random.random() < crit_chance else 1.0
+                    random_factor = random.randint(85, 100) / 100.0
+                    damage = max(1, int(raw_damage * crit_mult * random_factor))
 
                 battle.record_action(
                     actor_participant=attacker,
@@ -689,6 +878,10 @@ class BattleService:
                 potential_change_2,
             )
             shock_1, shock_2 = price_shocks[outcome]
+
+            c1_initial_ref = c1.pricing_reference_price or c1.current_price
+            c2_initial_ref = c2.pricing_reference_price or c2.current_price
+
             c1_fields = ['elo_rating', 'wins', 'losses']
             c2_fields = ['elo_rating', 'wins', 'losses']
             if cls.apply_reference_price_shock(c1, shock_1):
@@ -696,8 +889,39 @@ class BattleService:
             if cls.apply_reference_price_shock(c2, shock_2):
                 c2_fields.append('pricing_reference_price')
 
+            # Liquidity transfer between reserves when there is a winner
+            if winner and outcome != 'draw':
+                winner_c = c1 if winner.pk == p1.pk else c2
+                loser_c = c2 if winner.pk == p1.pk else c1
+                w_initial_ref = c1_initial_ref if winner.pk == p1.pk else c2_initial_ref
+                if w_initial_ref and w_initial_ref > 0:
+                    shock_pct = (
+                        winner_c.pricing_reference_price - w_initial_ref
+                    ) / w_initial_ref
+                    if shock_pct > 0:
+                        raw_transfer = int(
+                            Decimal(str(loser_c.reserve_cents)) * shock_pct
+                        )
+                        floor_cents = int(
+                            Decimal(str(loser_c.reserve_cents)) * Decimal('0.10')
+                        )
+                        available = max(0, loser_c.reserve_cents - floor_cents)
+                        transfer_cents = min(raw_transfer, available)
+                        if transfer_cents > 0:
+                            loser_c.reserve_cents -= transfer_cents
+                            winner_c.reserve_cents += transfer_cents
+                            if 'reserve_cents' not in c1_fields:
+                                c1_fields.append('reserve_cents')
+                            if 'reserve_cents' not in c2_fields:
+                                c2_fields.append('reserve_cents')
+
             c1.save(update_fields=c1_fields)
             c2.save(update_fields=c2_fields)
+
+            # Distribute solvent battle dividends
+            if winner and outcome != 'draw':
+                winner_creature = c1 if winner.pk == p1.pk else c2
+                cls._distribute_battle_dividends(winner_creature)
 
             battle.creature_1_elo_after = c1.elo_rating
             battle.creature_2_elo_after = c2.elo_rating
@@ -761,6 +985,120 @@ class BattleService:
                 ))
 
             Notification.objects.bulk_create(notifications)
+
+    @classmethod
+    def _distribute_battle_dividends(cls, winner_creature):
+        """
+        Distribute 0.2% of dividend_pool_cents to holders (and active training fund investors if any).
+        Strict lock order: 1º Creature (already locked), 2º Accounts (pk ordered), 3º SystemTreasury.
+        """
+        portfolios = list(
+            Portfolio.objects.filter(
+                creature=winner_creature,
+                quantity__gt=0,
+            ).select_related('owner')
+        )
+        active_fund = TrainingFund.objects.filter(
+            creature=winner_creature,
+            status=TrainingFund.Status.COMPLETED,
+            remaining_reward_battles__gt=0,
+        ).order_by('closed_at', 'created_at').first()
+
+        account_ids = {p.owner_id for p in portfolios}
+        if active_fund:
+            fund_investor_ids = active_fund.contributions.values_list('investor_id', flat=True)
+            account_ids.update(fund_investor_ids)
+
+        if not account_ids:
+            return
+
+        # 2º Account lock (ordered by pk)
+        locked_accounts = {
+            acc.pk: acc
+            for acc in Account.objects.select_for_update()
+            .filter(pk__in=sorted(account_ids))
+            .order_by('pk')
+        }
+
+        # 3º SystemTreasury lock
+        treasury = SystemTreasury.get_for_update()
+        match_pot_cents = int(
+            Decimal(str(treasury.dividend_pool_cents)) * Decimal('0.002')
+        )
+        if match_pot_cents <= 0:
+            return
+
+        fund_pot = 0
+        if active_fund:
+            fund_pot = int(Decimal(str(match_pot_cents)) * Decimal('0.20'))
+        holders_pot = match_pot_cents - fund_pot
+
+        total_held = sum(p.quantity for p in portfolios)
+        distributed_holders = 0
+        if total_held > 0 and holders_pot > 0:
+            for p in portfolios:
+                cents = int(
+                    (p.quantity / total_held) * Decimal(str(holders_pot))
+                )
+                if cents > 0:
+                    owner = locked_accounts.get(p.owner_id)
+                    if owner:
+                        owner.balance_cents += cents
+                        owner.save(update_fields=['balance_cents'])
+                        distributed_holders += cents
+                        Transfer.objects.create(
+                            sender=None,
+                            receiver=owner,
+                            amount=cents,
+                            type=Transfer.TransactionType.DEPOSIT,
+                            status=Transfer.TransactionStatus.COMPLETED,
+                            description=f"Battle dividend: {winner_creature.name}",
+                        )
+                        Notification.objects.create(
+                            user=owner,
+                            notification_type=Notification.Type.BATTLE_RESULT,
+                            title=f"Dividendo por victoria de {winner_creature.name}",
+                            message=f"Recibiste {cents}¢ por la victoria de {winner_creature.name} en combate.",
+                            related_creature=winner_creature,
+                        )
+
+        distributed_fund = 0
+        if active_fund and fund_pot > 0:
+            contributions = list(active_fund.contributions.all().select_related('investor'))
+            total_shares = sum(c.weighted_shares for c in contributions)
+            if total_shares > 0:
+                for c in contributions:
+                    inv_cents = int(
+                        (c.weighted_shares / total_shares) * Decimal(str(fund_pot))
+                    )
+                    if inv_cents > 0:
+                        inv = locked_accounts.get(c.investor_id)
+                        if inv:
+                            inv.balance_cents += inv_cents
+                            inv.save(update_fields=['balance_cents'])
+                            distributed_fund += inv_cents
+                            Transfer.objects.create(
+                                sender=None,
+                                receiver=inv,
+                                amount=inv_cents,
+                                type=Transfer.TransactionType.DEPOSIT,
+                                status=Transfer.TransactionStatus.COMPLETED,
+                                description=f"Training Fund Dividend: {winner_creature.name}",
+                            )
+                            Notification.objects.create(
+                                user=inv,
+                                notification_type=Notification.Type.TRAINING_COMPLETE,
+                                title=f"Rendimiento de Fondo: {winner_creature.name}",
+                                message=f"Recibiste {inv_cents}¢ por la victoria de {winner_creature.name}.",
+                                related_creature=winner_creature,
+                            )
+            active_fund.remaining_reward_battles -= 1
+            active_fund.save(update_fields=['remaining_reward_battles'])
+
+        total_distributed = distributed_holders + distributed_fund
+        if total_distributed > 0:
+            treasury.dividend_pool_cents -= total_distributed
+            treasury.save(update_fields=['dividend_pool_cents', 'updated_at'])
 
     @staticmethod
     def record_turn_investments(battle, turn_number):
@@ -1239,3 +1577,230 @@ class TrainingService:
                 'updated_at',
             ])
         return session
+
+    @classmethod
+    def create_fund(
+        cls, creature, target_stat, soft_cap_cents, hard_cap_cents, duration_minutes=30
+    ):
+        """
+        Create an open syndicated flash training fund.
+        Caps are scaled by saturation index theta_{i,s} if present.
+        """
+        saturation = TrainingSaturation.objects.filter(
+            creature=creature, stat=target_stat
+        ).first()
+        theta = saturation.saturation_index if saturation else Decimal('1.0000')
+
+        scaled_hard_cap = int(
+            (Decimal(hard_cap_cents) * theta).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+        )
+        scaled_soft_cap = int(
+            (Decimal(soft_cap_cents) * theta).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+        )
+
+        now = timezone.now()
+        expires_at = now + timezone.timedelta(minutes=duration_minutes)
+
+        return TrainingFund.objects.create(
+            creature=creature,
+            target_stat=target_stat,
+            soft_cap_cents=scaled_soft_cap,
+            hard_cap_cents=scaled_hard_cap,
+            opens_at=now,
+            expires_at=expires_at,
+            status=TrainingFund.Status.OPEN,
+        )
+
+    @classmethod
+    def contribute_to_fund(cls, user, fund_id, amount_cents):
+        """
+        Contribute to an open training fund.
+        Tranche multipliers:
+        - u <= 0.30: 1.40x
+        - 0.30 < u <= 0.75: 1.00x
+        - u > 0.75: 0.75x
+        If hard cap reached, resolves immediately.
+        """
+        if amount_cents <= 0:
+            raise ValidationError("Contribution must be positive.")
+
+        with transaction.atomic():
+            fund = TrainingFund.objects.select_for_update().get(pk=fund_id)
+            if fund.status != TrainingFund.Status.OPEN:
+                raise ValidationError("Training fund is not open.")
+            if timezone.now() >= fund.expires_at:
+                raise ValidationError("Training fund has expired.")
+
+            # Strict lock order: 1º Creature, 2º Account, 3º SystemTreasury
+            creature = Creature.objects.select_for_update().get(pk=fund.creature_id)
+            investor = Account.objects.select_for_update().get(pk=user.pk)
+
+            remaining_cap = fund.hard_cap_cents - fund.funded_cents
+            if remaining_cap <= 0:
+                raise ValidationError("Training fund hard cap reached.")
+
+            accepted_cents = min(amount_cents, remaining_cap)
+            if investor.balance_cents < accepted_cents:
+                raise ValidationError(
+                    f"Insufficient funds. Need {accepted_cents}¢, have {investor.balance_cents}¢."
+                )
+
+            # Prior fill fraction
+            u = Decimal(fund.funded_cents) / Decimal(fund.hard_cap_cents)
+            if u <= Decimal('0.30'):
+                multiplier = Decimal('1.40')
+            elif u <= Decimal('0.75'):
+                multiplier = Decimal('1.00')
+            else:
+                multiplier = Decimal('0.75')
+
+            weighted_shares = (Decimal(accepted_cents) * multiplier).quantize(
+                Decimal('0.0001'), rounding=ROUND_HALF_UP
+            )
+
+            # Deduct balance
+            investor.balance_cents -= accepted_cents
+            investor.save(update_fields=['balance_cents'])
+
+            # Record transfer for ledger
+            Transfer.objects.create(
+                sender=investor,
+                receiver=None,
+                amount=accepted_cents,
+                type=Transfer.TransactionType.WITHDRAW,
+                status=Transfer.TransactionStatus.COMPLETED,
+                description=f"Training Fund Contribution: {creature.name} ({fund.target_stat})",
+            )
+
+            # Record contribution
+            contribution = TrainingContribution.objects.create(
+                fund=fund,
+                investor=investor,
+                amount_cents=accepted_cents,
+                tranche_multiplier=multiplier,
+                weighted_shares=weighted_shares,
+            )
+
+            fund.funded_cents += accepted_cents
+            fund.save(update_fields=['funded_cents', 'updated_at'])
+
+            if fund.funded_cents == fund.hard_cap_cents:
+                cls._resolve_fund_locked(fund, creature)
+
+        return contribution
+
+    @classmethod
+    def _resolve_fund_locked(cls, fund, creature):
+        """
+        Execute locked resolution of completed fund:
+        - 50% creature reserve, 40% dividend pool, 10% company equity
+        - Stat mutation: 75% Breakthrough (+3..+7), 25% Volatile (+6..+10, secondary -3..-5)
+        - Saturation theta_{i,s} update
+        """
+        total = fund.funded_cents
+        creature_cents = int((Decimal(total) * Decimal('0.50')).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
+        dividend_cents = int((Decimal(total) * Decimal('0.40')).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
+        equity_cents = total - creature_cents - dividend_cents
+
+        creature.reserve_cents += creature_cents
+
+        treasury = SystemTreasury.get_for_update()
+        treasury.dividend_pool_cents += dividend_cents
+        treasury.company_equity_cents += equity_cents
+        treasury.save(update_fields=['dividend_pool_cents', 'company_equity_cents', 'updated_at'])
+
+        # Stat mutation
+        target_stat = fund.target_stat
+        current_val = getattr(creature, target_stat)
+        stat_fields = ['reserve_cents', target_stat]
+
+        if random.random() < 0.75:
+            # Breakthrough (+3 to +7)
+            boost = random.randint(3, 7)
+            setattr(creature, target_stat, current_val + boost)
+        else:
+            # Volatile Specialization (+6 to +10 on target, -3 to -5 on secondary, floor 10)
+            boost = random.randint(6, 10)
+            setattr(creature, target_stat, current_val + boost)
+            all_stats = ['hp', 'attack', 'defense', 'special_attack', 'special_defense', 'speed']
+            candidates = [s for s in all_stats if s != target_stat]
+            secondary_stat = random.choice(candidates)
+            sec_val = getattr(creature, secondary_stat)
+            penalty = random.randint(3, 5)
+            setattr(creature, secondary_stat, max(10, sec_val - penalty))
+            stat_fields.append(secondary_stat)
+
+        creature.save(update_fields=stat_fields)
+
+        # Update saturation
+        now = timezone.now()
+        fund.closed_at = now
+        t_max = max(1.0, (fund.expires_at - fund.opens_at).total_seconds())
+        duration = max(0.0, (now - fund.opens_at).total_seconds())
+        v_fill = max(0.0, min(1.0, 1.0 - (duration / t_max)))
+
+        saturation, _ = TrainingSaturation.objects.get_or_create(
+            creature=creature, stat=target_stat
+        )
+        curr_theta = float(saturation.saturation_index)
+        new_theta = max(1.0, curr_theta * math.exp(0.5 * (v_fill - 0.5)))
+        saturation.saturation_index = Decimal(str(new_theta)).quantize(
+            Decimal('0.0001'), rounding=ROUND_HALF_UP
+        )
+        saturation.save(update_fields=['saturation_index'])
+
+        fund.status = TrainingFund.Status.COMPLETED
+        fund.save(update_fields=['status', 'closed_at', 'updated_at'])
+
+    @classmethod
+    def expire_funds(cls):
+        """
+        Check and process expired open funds.
+        - If funded_cents >= soft_cap_cents: resolves normally.
+        - If funded_cents < soft_cap_cents: refunds 100% of contributions idempotently.
+        """
+        now = timezone.now()
+        expired_funds = list(
+            TrainingFund.objects.filter(
+                status=TrainingFund.Status.OPEN,
+                expires_at__lte=now,
+            )
+        )
+        processed = 0
+        for fund_stub in expired_funds:
+            with transaction.atomic():
+                fund = TrainingFund.objects.select_for_update().get(pk=fund_stub.pk)
+                if fund.status != TrainingFund.Status.OPEN:
+                    continue
+
+                creature = Creature.objects.select_for_update().get(pk=fund.creature_id)
+
+                if fund.funded_cents >= fund.soft_cap_cents:
+                    cls._resolve_fund_locked(fund, creature)
+                else:
+                    contributions = list(fund.contributions.all().select_related('investor'))
+                    investor_ids = sorted({c.investor_id for c in contributions})
+                    locked_accounts = {
+                        acc.pk: acc
+                        for acc in Account.objects.select_for_update()
+                        .filter(pk__in=investor_ids)
+                        .order_by('pk')
+                    }
+                    for c in contributions:
+                        inv = locked_accounts.get(c.investor_id)
+                        if inv:
+                            inv.balance_cents += c.amount_cents
+                            inv.save(update_fields=['balance_cents'])
+                            Transfer.objects.create(
+                                sender=None,
+                                receiver=inv,
+                                amount=c.amount_cents,
+                                type=Transfer.TransactionType.DEPOSIT,
+                                status=Transfer.TransactionStatus.COMPLETED,
+                                description=f"Training Fund Refund: {creature.name} ({fund.target_stat})",
+                            )
+                    fund.status = TrainingFund.Status.EXPIRED_REFUNDED
+                    fund.closed_at = now
+                    fund.save(update_fields=['status', 'closed_at', 'updated_at'])
+                processed += 1
+        return processed

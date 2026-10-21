@@ -134,7 +134,7 @@ class IncubationIntegrationTests(TestCase):
             owner=self.user,
             creature=self.creature,
         )
-        self.assertEqual(portfolio.quantity, Decimal('1'))
+        self.assertEqual(portfolio.quantity, incubation.hatched_quantity)
 
     def test_incubation_status_shows_hatched(self):
         self._login()

@@ -234,3 +234,16 @@ class FinancialSolvencyAndTreasuryTestCase(TestCase):
         # Closed system invariant
         cash_after = self._total_system_cash()
         self.assertEqual(cash_before, cash_after)
+
+    def test_market_buy_raises_validation_error_when_mm_inventory_insufficient(self):
+        # Creature has pool_supply of 1000 units. Attempt to buy 1001 units.
+        self.creature.pool_supply = Decimal("5.00000000")
+        self.creature.save(update_fields=["pool_supply"])
+        self.buyer.balance_cents = 1_000_000_00
+        self.buyer.save(update_fields=["balance_cents"])
+
+        with self.assertRaises(ValidationError) as ctx:
+            TradingEngine.execute_market_buy(
+                self.buyer, self.creature, Decimal("6")
+            )
+        self.assertIn("insufficient inventory", str(ctx.exception))

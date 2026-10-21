@@ -2,12 +2,21 @@ from decimal import Decimal, ROUND_HALF_UP
 
 
 MONEY_QUANTUM = Decimal('0.01')
+QUANTITY_QUANTUM = Decimal('0.00000001')
 
 
 def quantize_money(amount):
     """Round a monetary amount to persisted two-decimal precision."""
     return Decimal(str(amount)).quantize(
         MONEY_QUANTUM,
+        rounding=ROUND_HALF_UP,
+    )
+
+
+def quantize_quantity(quantity):
+    """Round an asset quantity to persisted eight-decimal precision."""
+    return Decimal(str(quantity)).quantize(
+        QUANTITY_QUANTUM,
         rounding=ROUND_HALF_UP,
     )
 

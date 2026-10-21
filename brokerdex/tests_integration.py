@@ -72,6 +72,8 @@ class P40FinancialJourneyTests(TestCase):
             current_price=Decimal("25.00"),
             previous_close=Decimal("25.00"),
             battle_cooldown=timedelta(hours=1),
+            pool_supply=Decimal("1000.00000000"),
+            reserve_cents=100_000_00,
         )
 
     def _post_deposit(self, amount_cents=10_000):

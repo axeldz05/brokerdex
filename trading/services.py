@@ -582,6 +582,12 @@ class TradingEngine:
         if seller is None:
             # User buys from Market Maker: net subtotal credited to creature.reserve_cents,
             # units exit creature.pool_supply
+            if locked_creature.pool_supply < quantity:
+                raise ValidationError(
+                    f"Market Maker has insufficient inventory "
+                    f"({locked_creature.pool_supply}) to execute this buy order "
+                    f"for {quantity} units of {locked_creature.name}."
+                )
             locked_creature.reserve_cents += subtotal_cents
             locked_creature.pool_supply -= quantity
             locked_creature.save(update_fields=['reserve_cents', 'pool_supply'])

@@ -127,6 +127,10 @@ class Creature(models.Model):
                 condition=models.Q(reserve_cents__gte=0),
                 name='creature_reserve_cents_nonnegative',
             ),
+            models.CheckConstraint(
+                condition=models.Q(pool_supply__gte=0),
+                name='creature_pool_supply_nonnegative',
+            ),
         ]
         ordering = ['name']
 
@@ -581,6 +585,25 @@ class Incubation(models.Model):
     failed_at = models.DateTimeField(null=True, blank=True)
     failure_reason = models.TextField(blank=True)
     refunded_at = models.DateTimeField(null=True, blank=True)
+    reserve_contribution_cents = models.BigIntegerField(
+        default=0,
+        help_text="Reserved 88% portion of egg cost to inject into creature.reserve_cents upon hatching",
+    )
+    dividend_cents = models.BigIntegerField(
+        default=0,
+        help_text="8% portion of egg cost sent to dividend pool",
+    )
+    equity_cents = models.BigIntegerField(
+        default=0,
+        help_text="4% portion of egg cost sent to company equity",
+    )
+    hatched_quantity = models.DecimalField(
+        max_digits=18,
+        decimal_places=8,
+        null=True,
+        blank=True,
+        help_text="Actual units credited to portfolio based on long-tail multiplier Z",
+    )
 
     class Meta:
         ordering = ['-purchased_at']
@@ -676,6 +699,112 @@ class TrainingSession(models.Model):
         indexes = [
             models.Index(fields=['status', 'execute_at']),
         ]
+
+
+class TrainingFund(models.Model):
+    class StatChoices(models.TextChoices):
+        HP = 'hp', 'HP'
+        ATTACK = 'attack', 'Attack'
+        DEFENSE = 'defense', 'Defense'
+        SPECIAL_ATTACK = 'special_attack', 'Special Attack'
+        SPECIAL_DEFENSE = 'special_defense', 'Special Defense'
+        SPEED = 'speed', 'Speed'
+
+    class Status(models.TextChoices):
+        OPEN = 'OPEN', 'Open'
+        COMPLETED = 'COMPLETED', 'Completed'
+        EXPIRED_REFUNDED = 'EXPIRED_REFUNDED', 'Expired and Refunded'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    creature = models.ForeignKey(
+        Creature,
+        on_delete=models.CASCADE,
+        related_name='training_funds',
+    )
+    target_stat = models.CharField(
+        max_length=20,
+        choices=StatChoices.choices,
+    )
+    soft_cap_cents = models.BigIntegerField()
+    hard_cap_cents = models.BigIntegerField()
+    funded_cents = models.BigIntegerField(default=0)
+    opens_at = models.DateTimeField(default=timezone.now)
+    expires_at = models.DateTimeField()
+    closed_at = models.DateTimeField(null=True, blank=True)
+    remaining_reward_battles = models.PositiveIntegerField(default=3)
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.OPEN,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-opens_at']
+        indexes = [
+            models.Index(fields=['creature', 'status']),
+        ]
+
+    def __str__(self):
+        return f"TrainingFund: {self.creature.name} ({self.target_stat}) [{self.status}]"
+
+
+class TrainingContribution(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    fund = models.ForeignKey(
+        TrainingFund,
+        on_delete=models.CASCADE,
+        related_name='contributions',
+    )
+    investor = models.ForeignKey(
+        Account,
+        on_delete=models.CASCADE,
+        related_name='training_contributions',
+    )
+    amount_cents = models.BigIntegerField()
+    tranche_multiplier = models.DecimalField(max_digits=5, decimal_places=2)
+    weighted_shares = models.DecimalField(max_digits=18, decimal_places=4)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+        indexes = [
+            models.Index(fields=['fund', 'investor']),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.investor.username} -> {self.fund.creature.name} "
+            f"({self.amount_cents}¢ @ {self.tranche_multiplier}x)"
+        )
+
+
+class TrainingSaturation(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    creature = models.ForeignKey(
+        Creature,
+        on_delete=models.CASCADE,
+        related_name='training_saturations',
+    )
+    stat = models.CharField(max_length=20)
+    saturation_index = models.DecimalField(
+        max_digits=10,
+        decimal_places=4,
+        default=Decimal('1.0000'),
+    )
+
+    class Meta:
+        unique_together = ['creature', 'stat']
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(saturation_index__gte=Decimal('1.0000')),
+                name='training_saturation_index_gte_one',
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.creature.name} ({self.stat}): saturation={self.saturation_index}"
 
 
 class BattleInvestment(models.Model):

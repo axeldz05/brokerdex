@@ -34,6 +34,8 @@ class MarketBuyConcurrencyTests(TransactionTestCase):
             attack=50,
             defense=50,
             description="A creature for the concurrent market-buy test.",
+            pool_supply=Decimal("1000.00000000"),
+            reserve_cents=100_000_00,
         )
 
     def test_two_market_buys_cannot_spend_the_same_balance(self):
