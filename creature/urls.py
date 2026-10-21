@@ -3,6 +3,8 @@ from . import views
 
 app_name = 'creature'
 urlpatterns = [
+    path('training/', views.training_funds_view, name='training_funds'),
+    path('training/contribute/<uuid:fund_id>/', views.contribute_fund_view, name='contribute_fund'),
     path('incubation/', views.incubation_shop_view, name='incubation_shop'),
     path('incubation/purchase/<uuid:egg_id>/', views.purchase_egg_view, name='purchase_egg'),
     path('incubation/status/', views.incubation_status_view, name='incubation_status'),

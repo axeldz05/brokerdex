@@ -262,3 +262,18 @@ def recover_creature_operations():
             schedule_turn=schedule_turn,
         ),
     }
+
+
+@shared_task
+@prevent_task_overlap(timeout=60)
+def manage_market_training_funds():
+    """
+    Periodically clean up expired funds and spawn new syndicated flash training funds.
+    """
+    expired = TrainingService.expire_funds()
+    spawned = TrainingService.spawn_market_funds(target_open_count=3)
+    return {
+        'expired': expired,
+        'spawned': spawned,
+    }
+

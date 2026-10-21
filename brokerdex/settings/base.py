@@ -223,4 +223,8 @@ CELERY_BEAT_SCHEDULE = {
         "task": "trading.tasks.calculate_market_indices",
         "schedule": crontab(hour=0, minute=30),
     },
+    "gestionar-fondos-entrenamiento-cada-2-minutos": {
+        "task": "creature.tasks.manage_market_training_funds",
+        "schedule": crontab(minute="*/2"),
+    },
 }

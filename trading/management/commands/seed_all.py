@@ -22,8 +22,11 @@ from creature.models import (
     BattleAction,
     BattleInvestment,
     Incubation,
+    TrainingContribution,
+    TrainingFund,
+    TrainingSaturation,
 )
-from creature.services import BattleService
+from creature.services import BattleService, TrainingService
 from trading.models import PriceHistory, Trade, Portfolio, SystemTreasury
 
 
@@ -110,10 +113,15 @@ class Command(BaseCommand):
         if simulation:
             self._seed_simulation_population()
 
+        TrainingService.spawn_market_funds(target_open_count=3)
+
         self.stdout.write(self.style.SUCCESS('Seeding complete!'))
 
     def _clear_data(self):
         self.stdout.write('Clearing existing data...')
+        TrainingContribution.objects.all().delete()
+        TrainingFund.objects.all().delete()
+        TrainingSaturation.objects.all().delete()
         BattleInvestment.objects.all().delete()
         BattleAction.objects.all().delete()
         BattleParticipant.objects.all().delete()

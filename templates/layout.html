@@ -344,6 +344,9 @@
                             <a class="nav-link" href="{% url 'creature:battle_list' %}"{% if current_view == 'creature:battle_list' %} aria-current="page"{% endif %}><i class="bx bx-shield-quarter" aria-hidden="true"></i> Battles</a>
                         </li>
                         <li class="nav-item">
+                            <a class="nav-link" href="{% url 'creature:training_funds' %}"{% if current_view == 'creature:training_funds' %} aria-current="page"{% endif %}><i class="bx bx-dumbbell" aria-hidden="true"></i> Entrenamiento</a>
+                        </li>
+                        <li class="nav-item">
                             <a class="nav-link" href="{% url 'trading:orders' %}"{% if current_view == 'trading:orders' %} aria-current="page"{% endif %}>Orders</a>
                         </li>
                         <li class="nav-item">

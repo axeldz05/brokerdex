@@ -1,9 +1,11 @@
 import random
+from decimal import Decimal
 from typing import List
 
 from account.models import Account
-from creature.models import Creature
-from creature.services import BattleService
+from creature.models import Creature, TrainingFund
+from creature.services import BattleService, TrainingService
+from trading.models import Portfolio
 from trading.services import PricingEngine
 from .state import is_simulation_active, record_simulation_event
 from .strategies import (
@@ -63,6 +65,55 @@ class SimulationEngine:
                     events.append(event)
             except Exception:
                 pass
+
+        # Evaluate open TrainingFunds
+        open_funds = list(
+            TrainingFund.objects.filter(status=TrainingFund.Status.OPEN).select_related('creature')
+        )
+        if open_funds and users:
+            solvent_users = [u for u in users if u.balance_cents >= 500]
+            if solvent_users and random.random() < 0.35:
+                bot_user = random.choice(solvent_users)
+                held_creature_ids = set(
+                    Portfolio.objects.filter(owner=bot_user, quantity__gt=0).values_list('creature_id', flat=True)
+                )
+
+                def _fund_priority(fund):
+                    score = 1.0
+                    fill_ratio = (
+                        Decimal(fund.funded_cents) / Decimal(fund.hard_cap_cents)
+                        if fund.hard_cap_cents > 0
+                        else Decimal('1.0')
+                    )
+                    if fill_ratio <= Decimal('0.30'):
+                        score += 2.0  # Priority for seed tranche 1.40x
+                    if fund.creature_id in held_creature_ids:
+                        score += 1.5  # Priority for owned creatures
+                    return score
+
+                sorted_funds = sorted(open_funds, key=_fund_priority, reverse=True)
+                target_fund = sorted_funds[0]
+                remaining_cap = target_fund.hard_cap_cents - target_fund.funded_cents
+
+                if remaining_cap > 0:
+                    max_contrib = min(remaining_cap, int(bot_user.balance_cents * 0.20))
+                    contrib_cents = max(100, min(max_contrib, remaining_cap))
+                    if bot_user.balance_cents >= contrib_cents:
+                        try:
+                            contrib = TrainingService.contribute_to_fund(
+                                bot_user, target_fund.pk, contrib_cents
+                            )
+                            c_event = record_simulation_event(
+                                'TRAINING_FUND',
+                                'CONTRIBUTE',
+                                target_fund.creature.name,
+                                contrib_cents / 100.0,
+                                f"Contributed ${contrib_cents / 100:.2f} ({contrib.tranche_multiplier}x)"
+                            )
+                            c_event['username'] = bot_user.username
+                            events.append(c_event)
+                        except Exception:
+                            pass
 
         # Select 1 to 3 users to perform trading actions
         action_count = min(len(users), random.randint(1, 3))

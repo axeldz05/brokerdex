@@ -482,9 +482,17 @@ class BattleService:
         change_1 = Decimal(str(potential_change_1))
         change_2 = Decimal(str(potential_change_2))
         zero = Decimal('0')
+
+        lose_on_1_win = quantize_money(
+            ((Decimal('1') / (Decimal('1') + change_1 / Decimal('100'))) - Decimal('1')) * Decimal('100')
+        )
+        lose_on_2_win = quantize_money(
+            ((Decimal('1') / (Decimal('1') + change_2 / Decimal('100'))) - Decimal('1')) * Decimal('100')
+        )
+
         return {
-            'creature_1_wins': (change_1, -change_1),
-            'creature_2_wins': (-change_2, change_2),
+            'creature_1_wins': (change_1, lose_on_1_win),
+            'creature_2_wins': (lose_on_2_win, change_2),
             'draw': (zero, zero),
         }
 
@@ -1731,6 +1739,8 @@ class TrainingService:
             stat_fields.append(secondary_stat)
 
         creature.save(update_fields=stat_fields)
+        from trading.services import PricingEngine
+        PricingEngine.update_creature_price(creature)
 
         # Update saturation
         now = timezone.now()
@@ -1804,3 +1814,68 @@ class TrainingService:
                     fund.save(update_fields=['status', 'closed_at', 'updated_at'])
                 processed += 1
         return processed
+
+    @classmethod
+    def spawn_market_funds(cls, target_open_count=3):
+        """
+        Ensure there are at least target_open_count active OPEN TrainingFunds.
+        Chooses (creature, stat) pairs without an active open fund,
+        weighted by 1 / (theta_{i,s})^2.
+        """
+        cls.expire_funds()
+        open_funds = TrainingFund.objects.filter(status=TrainingFund.Status.OPEN)
+        current_open_count = open_funds.count()
+        if current_open_count >= target_open_count:
+            return 0
+
+        open_pairs = set(
+            open_funds.values_list('creature_id', 'target_stat')
+        )
+
+        all_creatures = list(Creature.objects.all())
+        if not all_creatures:
+            return 0
+
+        available_stats = [
+            choice[0] for choice in TrainingFund.StatChoices.choices
+        ]
+
+        saturations = {
+            (sat.creature_id, sat.stat): sat.saturation_index
+            for sat in TrainingSaturation.objects.all()
+        }
+
+        candidates = []
+        weights = []
+
+        for creature in all_creatures:
+            for stat in available_stats:
+                if (creature.pk, stat) in open_pairs:
+                    continue
+                theta = saturations.get((creature.pk, stat), Decimal('1.0000'))
+                weight = float(Decimal('1.0') / (theta ** 2))
+                candidates.append((creature, stat))
+                weights.append(weight)
+
+        spawned = 0
+        needed = target_open_count - current_open_count
+
+        while candidates and spawned < needed:
+            chosen_index = random.choices(range(len(candidates)), weights=weights, k=1)[0]
+            chosen_creature, chosen_stat = candidates.pop(chosen_index)
+            weights.pop(chosen_index)
+
+            spot_cents = dollars_to_cents(chosen_creature.current_price or Decimal('100.00'))
+            base_soft_cap = max(1000, int(Decimal(spot_cents) * Decimal('0.15')))
+            base_hard_cap = base_soft_cap * 2
+
+            cls.create_fund(
+                creature=chosen_creature,
+                target_stat=chosen_stat,
+                soft_cap_cents=base_soft_cap,
+                hard_cap_cents=base_hard_cap,
+                duration_minutes=30,
+            )
+            spawned += 1
+
+        return spawned

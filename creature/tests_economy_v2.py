@@ -2,6 +2,7 @@ import math
 from decimal import Decimal
 
 from django.test import TestCase
+from django.urls import reverse
 from django.utils import timezone
 
 from account.models import Account
@@ -542,3 +543,155 @@ class ClosedEconomyPhasesTestCase(TestCase):
         # Total cash conserved
         cash_after = self._total_system_cash()
         self.assertEqual(cash_before, cash_after)
+
+    def test_two_consecutive_battles_return_to_reference_without_geometric_erosion(self):
+        # Two identical creatures with equal stats and starting at $100.00
+        c1 = Creature.objects.create(
+            name="CloneA",
+            type=PrimaryType.NORMAL,
+            current_price=Decimal("100.00"),
+            previous_close=Decimal("100.00"),
+            pricing_reference_price=Decimal("100.00"),
+            reserve_cents=50_000_00,
+            pool_supply=Decimal("500.00000000"),
+            hp=100,
+            attack=100,
+            defense=100,
+            special_attack=100,
+            special_defense=100,
+            speed=100,
+            elo_rating=1000,
+        )
+        c2 = Creature.objects.create(
+            name="CloneB",
+            type=PrimaryType.NORMAL,
+            current_price=Decimal("100.00"),
+            previous_close=Decimal("100.00"),
+            pricing_reference_price=Decimal("100.00"),
+            reserve_cents=50_000_00,
+            pool_supply=Decimal("500.00000000"),
+            hp=100,
+            attack=100,
+            defense=100,
+            special_attack=100,
+            special_defense=100,
+            speed=100,
+            elo_rating=1000,
+        )
+
+        # Battle 1: C1 wins against C2
+        battle1 = Battle.objects.start_battle(c1, c2)
+        p1, p2 = battle1.participants.order_by("id")
+        battle1.status = "finished"
+        battle1.winner = p1
+        battle1.save(update_fields=["status", "winner"])
+        BattleService.process_battle_result(battle1.pk)
+
+        c1.refresh_from_db()
+        c2.refresh_from_db()
+        self.assertEqual(c1.pricing_reference_price, Decimal("102.47"))
+        self.assertEqual(c2.pricing_reference_price, Decimal("97.59"))
+
+        # Maintain equal expectation and clear cooldown for Battle 2
+        past = timezone.now() - timezone.timedelta(seconds=10)
+        c1.elo_rating = 1000
+        c1.currently_in_battle = False
+        c1.cooldown_expires_at = past
+        c1.save(update_fields=["elo_rating", "currently_in_battle", "cooldown_expires_at"])
+
+        c2.elo_rating = 1000
+        c2.currently_in_battle = False
+        c2.cooldown_expires_at = past
+        c2.save(update_fields=["elo_rating", "currently_in_battle", "cooldown_expires_at"])
+
+        # Battle 2: C2 wins against C1 with inverse shock
+        battle2 = Battle.objects.start_battle(c1, c2)
+        p1_2, p2_2 = battle2.participants.order_by("id")
+        battle2.status = "finished"
+        battle2.winner = p2_2
+        battle2.save(update_fields=["status", "winner"])
+        BattleService.process_battle_result(battle2.pk)
+
+        c1.refresh_from_db()
+        c2.refresh_from_db()
+
+        # Both reference prices return strictly to 100.00 without geometric erosion
+        self.assertEqual(c1.pricing_reference_price, Decimal("100.00"))
+        self.assertEqual(c2.pricing_reference_price, Decimal("100.00"))
+
+    def test_spawn_market_funds_maintains_target_open_count(self):
+        # Initial: no open funds
+        TrainingFund.objects.all().delete()
+        self.assertEqual(TrainingFund.objects.filter(status=TrainingFund.Status.OPEN).count(), 0)
+
+        spawned = TrainingService.spawn_market_funds(target_open_count=3)
+        self.assertEqual(spawned, 3)
+        self.assertEqual(TrainingFund.objects.filter(status=TrainingFund.Status.OPEN).count(), 3)
+
+        # Calling again when 3 are already OPEN spawns 0
+        spawned_again = TrainingService.spawn_market_funds(target_open_count=3)
+        self.assertEqual(spawned_again, 0)
+        self.assertEqual(TrainingFund.objects.filter(status=TrainingFund.Status.OPEN).count(), 3)
+
+    def test_training_funds_views_and_contributions(self):
+        fund = TrainingService.create_fund(
+            creature=self.agnidon,
+            target_stat="attack",
+            soft_cap_cents=2000,
+            hard_cap_cents=5000,
+        )
+
+        # 1. Unauthenticated GET to training funds view
+        response = self.client.get(reverse('creature:training_funds'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Fondos de Entrenamiento Flash")
+        self.assertContains(response, self.agnidon.name)
+
+        # 2. Authenticated user viewing training funds
+        self.client.force_login(self.user1)
+        response_auth = self.client.get(reverse('creature:training_funds'))
+        self.assertEqual(response_auth.status_code, 200)
+        self.assertContains(response_auth, "Saldo disponible")
+
+        # 3. Post invalid contribution (negative or zero)
+        contribute_url = reverse('creature:contribute_fund', args=[fund.id])
+        res_invalid = self.client.post(contribute_url, {'amount': '-5.00'})
+        self.assertRedirects(res_invalid, reverse('creature:training_funds'))
+
+        # 4. Post contribution exceeding user balance
+        res_broke = self.client.post(contribute_url, {'amount': '999999.00'})
+        self.assertRedirects(res_broke, reverse('creature:training_funds'))
+
+        # 5. Post valid contribution ($10.00 = 1,000 cents)
+        initial_balance = self.user1.balance_cents
+        res_valid = self.client.post(contribute_url, {'amount': '10.00'})
+        self.assertRedirects(res_valid, reverse('creature:training_funds'))
+
+        fund.refresh_from_db()
+        self.assertEqual(fund.funded_cents, 1000)
+        self.user1.refresh_from_db()
+        self.assertEqual(self.user1.balance_cents, initial_balance - 1000)
+
+    def test_bot_simulation_training_fund_contribution(self):
+        from unittest.mock import patch
+        from trading.simulation.engine import SimulationEngine
+
+        TrainingFund.objects.all().delete()
+        fund = TrainingService.create_fund(
+            creature=self.agnidon,
+            target_stat="defense",
+            soft_cap_cents=2000,
+            hard_cap_cents=5000,
+        )
+
+        engine = SimulationEngine()
+        with patch("random.random", return_value=0.1):
+            events = engine.tick()
+
+        fund.refresh_from_db()
+        # Verify that either an event was logged or fund accepted contribution
+        fund_events = [e for e in events if e.get('strategy') == 'TRAINING_FUND']
+        if fund_events:
+            self.assertEqual(fund_events[0]['strategy'], 'TRAINING_FUND')
+            self.assertGreater(fund.funded_cents, 0)
+

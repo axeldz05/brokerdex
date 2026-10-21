@@ -30,6 +30,7 @@ def get_simulation_stats() -> dict:
                 'VALUE': 0,
                 'MARKET_MAKER': 0,
                 'CASUAL': 0,
+                'TRAINING_FUND': 0,
             },
             'last_event_at': None,
         }
@@ -47,6 +48,7 @@ def reset_simulation_stats() -> None:
                 'VALUE': 0,
                 'MARKET_MAKER': 0,
                 'CASUAL': 0,
+                'TRAINING_FUND': 0,
             },
             'last_event_at': None,
         },
@@ -58,7 +60,8 @@ def record_simulation_event(strategy: str, action: str, creature_name: str, amou
     """Record an executed bot event and update in-memory / cache statistics."""
     stats = get_simulation_stats()
     stats['total_events'] += 1
-    if strategy in stats['strategies']:
+    if 'strategies' in stats:
+        stats['strategies'].setdefault(strategy, 0)
         stats['strategies'][strategy] += 1
     stats['last_event_at'] = timezone.now().isoformat()
     cache.set(STATS_KEY, stats, timeout=None)

@@ -79,6 +79,12 @@ class BattlePricingShockTests(TestCase):
             )
         )
 
+    def _expected_loser_reference(self, win_shock):
+        lose_shock = quantize_money(
+            ((Decimal('1') / (Decimal('1') + win_shock / Decimal('100'))) - Decimal('1')) * Decimal('100')
+        )
+        return self._expected_reference(lose_shock)
+
     def test_underdog_win_applies_previewed_larger_symmetric_shock(self):
         battle = self._start_battle()
         self.assertGreater(
@@ -100,7 +106,7 @@ class BattlePricingShockTests(TestCase):
         )
         self.assertEqual(
             self.favorite.pricing_reference_price,
-            self._expected_reference(-shock),
+            self._expected_loser_reference(shock),
         )
         self.assertEqual(participants[0].price_before, Decimal('100.00'))
         self.assertEqual(
@@ -169,15 +175,11 @@ class BattlePricingShockTests(TestCase):
         )
         self.assertEqual(
             self.underdog.pricing_reference_price,
-            self._expected_reference(-shock),
+            self._expected_loser_reference(shock),
         )
-        winner_delta = (
-            self.favorite.pricing_reference_price - Decimal('100.00')
-        )
-        loser_delta = (
-            self.underdog.pricing_reference_price - Decimal('100.00')
-        )
-        self.assertEqual(winner_delta, -loser_delta)
+        win_mult = Decimal('1') + (self.favorite.pricing_reference_price - Decimal('100.00')) / Decimal('100.00')
+        lose_mult = Decimal('1') + (self.underdog.pricing_reference_price - Decimal('100.00')) / Decimal('100.00')
+        self.assertEqual((win_mult * lose_mult).quantize(Decimal('0.0001')), Decimal('1.0000'))
 
     def test_draw_keeps_reference_prices_unchanged(self):
         battle = self._start_battle()
@@ -236,7 +238,7 @@ class BattlePricingShockTests(TestCase):
             first_references,
             (
                 self._expected_reference(shock),
-                self._expected_reference(-shock),
+                self._expected_loser_reference(shock),
             ),
         )
         self.assertEqual(
