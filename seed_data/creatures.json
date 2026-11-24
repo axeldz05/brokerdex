@@ -1,142 +1,461 @@
 [
   {
-    "name": "Agnidon", "type": "fire", "secondary_type": "flying",
-    "description": "Agnidon flies around the sky in search of powerful opponents. It breathes fire of such great heat that it melts anything.",
-    "base_stats": {"hp": 78, "attack": 84, "defense": 78, "special_attack": 109, "special_defense": 85, "speed": 100},
-    "initial_price": 450.00, "is_legendary": false, "is_mythical": false,
-    "abilities": ["Flamethrower", "Air Slash", "Dragon Claw", "Hyper Beam"]
+    "name": "Agnidon",
+    "type": "fire",
+    "secondary_type": "dragon",
+    "description": "A fiery winged reptile with intense burning claws. Its body temperature rises when preparing to unleash bursts of flame.",
+    "base_stats": {
+      "hp": 78,
+      "attack": 84,
+      "defense": 78,
+      "special_attack": 109,
+      "special_defense": 85,
+      "speed": 100
+    },
+    "initial_price": 450.0,
+    "is_legendary": false,
+    "is_mythical": false,
+    "abilities": [
+      "Fire Claw",
+      "Gale Slash",
+      "Dragon Slash",
+      "Hyper Beam"
+    ]
   },
   {
-    "name": "Bigfin", "type": "water",
-    "description": "Bigfin has cannons that protrude from its shell. The cannons can be aimed and fired with precision.",
-    "base_stats": {"hp": 79, "attack": 83, "defense": 100, "special_attack": 85, "special_defense": 105, "speed": 78},
-    "initial_price": 420.00, "is_legendary": false, "is_mythical": false,
-    "abilities": ["Hydro Pump", "Surf", "Ice Beam", "Dark Pulse"]
+    "name": "Bigfin",
+    "type": "water",
+    "secondary_type": "dragon",
+    "description": "A massive aquatic leviathan whose broad fins can create crushing waves. Deep ocean currents follow its movements.",
+    "base_stats": {
+      "hp": 95,
+      "attack": 85,
+      "defense": 100,
+      "special_attack": 90,
+      "special_defense": 105,
+      "speed": 75
+    },
+    "initial_price": 420.0,
+    "is_legendary": false,
+    "is_mythical": false,
+    "abilities": [
+      "Water Cannon",
+      "Aqua Wave",
+      "Frost Ray",
+      "Dark Pulse"
+    ]
   },
   {
-    "name": "Anoleaf", "type": "grass", "secondary_type": "poison",
-    "description": "The flower on its back absorbs sunlight to produce energy. It can unleash powerful solar beams.",
-    "base_stats": {"hp": 80, "attack": 82, "defense": 83, "special_attack": 100, "special_defense": 100, "speed": 80},
-    "initial_price": 400.00, "is_legendary": false, "is_mythical": false,
-    "abilities": ["Solar Beam", "Vine Whip", "Sludge Bomb", "Hyper Beam"]
+    "name": "Anoleaf",
+    "type": "grass",
+    "secondary_type": "poison",
+    "description": "A gentle forest reptile crowned with broad leaves. It absorbs solar energy through its foliage to nourish nearby plants.",
+    "base_stats": {
+      "hp": 80,
+      "attack": 82,
+      "defense": 83,
+      "special_attack": 100,
+      "special_defense": 100,
+      "speed": 80
+    },
+    "initial_price": 400.0,
+    "is_legendary": false,
+    "is_mythical": false,
+    "abilities": [
+      "Solar Ray",
+      "Vine Lash",
+      "Acid Bomb",
+      "Hyper Beam"
+    ]
   },
   {
-    "name": "Rockitten", "type": "electric",
-    "description": "When Rockitten is angered, it immediately discharges the energy stored in the pouches in its cheeks.",
-    "base_stats": {"hp": 35, "attack": 55, "defense": 40, "special_attack": 50, "special_defense": 50, "speed": 90},
-    "initial_price": 150.00, "is_legendary": false, "is_mythical": false,
-    "abilities": ["Thunderbolt", "Thunder", "Quick Attack", "Play Rough"]
+    "name": "Rockitten",
+    "type": "rock",
+    "secondary_type": "ground",
+    "description": "A playful feline creature with a stone-hard carapace. Despite its rocky exterior, it is agile and affectionate.",
+    "base_stats": {
+      "hp": 65,
+      "attack": 80,
+      "defense": 85,
+      "special_attack": 50,
+      "special_defense": 65,
+      "speed": 90
+    },
+    "initial_price": 180.0,
+    "is_legendary": false,
+    "is_mythical": false,
+    "abilities": [
+      "Rock Spike",
+      "Earth Tremor",
+      "Swift Strike",
+      "Wild Charge"
+    ]
   },
   {
-    "name": "Raichu", "type": "electric",
-    "description": "Raichu stores electricity in its body. If it becomes fully charged, its tail stands up and sparks fly.",
-    "base_stats": {"hp": 60, "attack": 90, "defense": 55, "special_attack": 90, "special_defense": 80, "speed": 110},
-    "initial_price": 250.00, "is_legendary": false, "is_mythical": false,
-    "abilities": ["Thunderbolt", "Thunder", "Iron Head", "Quick Attack"]
+    "name": "Bolt",
+    "type": "electric",
+    "secondary_type": "steel",
+    "description": "An energized metallic creature crackling with raw voltage. It discharges bright sparks whenever it accelerates.",
+    "base_stats": {
+      "hp": 60,
+      "attack": 90,
+      "defense": 75,
+      "special_attack": 90,
+      "special_defense": 80,
+      "speed": 110
+    },
+    "initial_price": 260.0,
+    "is_legendary": false,
+    "is_mythical": false,
+    "abilities": [
+      "Static Shock",
+      "Thunder Strike",
+      "Steel Ram",
+      "Swift Strike"
+    ]
   },
   {
-    "name": "Gengar", "type": "ghost", "secondary_type": "poison",
-    "description": "To steal the life of its target, it slips into the prey's shadow and silently waits for an opportunity.",
-    "base_stats": {"hp": 60, "attack": 65, "defense": 60, "special_attack": 130, "special_defense": 75, "speed": 110},
-    "initial_price": 500.00, "is_legendary": false, "is_mythical": false,
-    "abilities": ["Shadow Ball", "Dark Pulse", "Sludge Bomb", "Hyper Beam"]
+    "name": "Arthrobolt",
+    "type": "electric",
+    "secondary_type": "bug",
+    "description": "An armored insectoid harnessing concentrated lightning between its antennae. It strikes before thunder can even sound.",
+    "base_stats": {
+      "hp": 70,
+      "attack": 95,
+      "defense": 85,
+      "special_attack": 85,
+      "special_defense": 75,
+      "speed": 95
+    },
+    "initial_price": 290.0,
+    "is_legendary": false,
+    "is_mythical": false,
+    "abilities": [
+      "Static Shock",
+      "Thunder Strike",
+      "Blade Cross",
+      "Swift Strike"
+    ]
   },
   {
-    "name": "Dragonite", "type": "dragon", "secondary_type": "flying",
-    "description": "It is said that this Creature lives somewhere in the sea and that it flies. It is a kindhearted Creature.",
-    "base_stats": {"hp": 91, "attack": 134, "defense": 95, "special_attack": 100, "special_defense": 100, "speed": 80},
-    "initial_price": 600.00, "is_legendary": false, "is_mythical": false,
-    "abilities": ["Dragon Claw", "Dragon Pulse", "Hyper Beam", "Ice Beam"]
+    "name": "Araignee",
+    "type": "ghost",
+    "secondary_type": "poison",
+    "description": "A spectral arachnid that weaves threads out of shadow and mist. It stalks in silence through twilight dimensions.",
+    "base_stats": {
+      "hp": 65,
+      "attack": 70,
+      "defense": 65,
+      "special_attack": 130,
+      "special_defense": 75,
+      "speed": 110
+    },
+    "initial_price": 500.0,
+    "is_legendary": false,
+    "is_mythical": false,
+    "abilities": [
+      "Shadow Blob",
+      "Dark Pulse",
+      "Acid Bomb",
+      "Hyper Beam"
+    ]
   },
   {
-    "name": "Mewtwo", "type": "psychic",
-    "description": "A Creature created by scientific manipulation of Mew's DNA. It has almost unbeatable psychic power.",
-    "base_stats": {"hp": 106, "attack": 110, "defense": 90, "special_attack": 154, "special_defense": 90, "speed": 130},
-    "initial_price": 2500.00, "is_legendary": true, "is_mythical": false,
-    "abilities": ["Psychic", "Aura Sphere", "Shadow Ball", "Hyper Beam"]
+    "name": "Allagon",
+    "type": "dragon",
+    "secondary_type": "steel",
+    "description": "A legendary metallic dragon known for immense physical fortitude and loyalty. It soars high above mountain peaks.",
+    "base_stats": {
+      "hp": 91,
+      "attack": 134,
+      "defense": 95,
+      "special_attack": 100,
+      "special_defense": 100,
+      "speed": 80
+    },
+    "initial_price": 600.0,
+    "is_legendary": false,
+    "is_mythical": false,
+    "abilities": [
+      "Dragon Slash",
+      "Dragon Pulse",
+      "Hyper Beam",
+      "Frost Ray"
+    ]
   },
   {
-    "name": "Lucario", "type": "fighting", "secondary_type": "steel",
-    "description": "It can sense the aura of living things. It can read the thoughts and movements of its opponents.",
-    "base_stats": {"hp": 70, "attack": 110, "defense": 70, "special_attack": 115, "special_defense": 70, "speed": 90},
-    "initial_price": 350.00, "is_legendary": false, "is_mythical": false,
-    "abilities": ["Aura Sphere", "Close Combat", "Dark Pulse", "Iron Head"]
+    "name": "Anu",
+    "type": "psychic",
+    "description": "A mythical dream-weaver that manipulates space and thoughts with telepathic waves. Revered in ancient legends.",
+    "base_stats": {
+      "hp": 106,
+      "attack": 110,
+      "defense": 90,
+      "special_attack": 154,
+      "special_defense": 90,
+      "speed": 130
+    },
+    "initial_price": 1000.0,
+    "is_legendary": true,
+    "is_mythical": false,
+    "abilities": [
+      "Arcane Eye",
+      "Energy Blast",
+      "Shadow Blob",
+      "Hyper Beam"
+    ]
   },
   {
-    "name": "Garchomp", "type": "dragon", "secondary_type": "ground",
-    "description": "It flies at speeds equal to a jet fighter. It never allows its prey to escape.",
-    "base_stats": {"hp": 108, "attack": 130, "defense": 95, "special_attack": 80, "special_defense": 85, "speed": 102},
-    "initial_price": 550.00, "is_legendary": false, "is_mythical": false,
-    "abilities": ["Dragon Claw", "Earthquake", "Stone Edge", "Crunch"]
+    "name": "Boxali",
+    "type": "fighting",
+    "secondary_type": "flying",
+    "description": "An athletic marsupial fighter with exceptional kicking power. It uses aerial acrobatics to overwhelm opponents.",
+    "base_stats": {
+      "hp": 75,
+      "attack": 115,
+      "defense": 70,
+      "special_attack": 110,
+      "special_defense": 70,
+      "speed": 90
+    },
+    "initial_price": 380.0,
+    "is_legendary": false,
+    "is_mythical": false,
+    "abilities": [
+      "Energy Blast",
+      "Assault",
+      "Mach Punch",
+      "Gale Slash"
+    ]
   },
   {
-    "name": "Tyranitar", "type": "rock", "secondary_type": "dark",
-    "description": "Extremely strong, it can change the landscape. It is so unruly that it cannot be controlled.",
-    "base_stats": {"hp": 100, "attack": 134, "defense": 110, "special_attack": 95, "special_defense": 100, "speed": 61},
-    "initial_price": 580.00, "is_legendary": false, "is_mythical": false,
-    "abilities": ["Stone Edge", "Earthquake", "Crunch", "Hyper Beam"]
+    "name": "Brickhemoth",
+    "type": "ground",
+    "secondary_type": "rock",
+    "description": "A towering colossus constructed from stone and terracotta. Its footsteps shake the earth for miles around.",
+    "base_stats": {
+      "hp": 108,
+      "attack": 130,
+      "defense": 95,
+      "special_attack": 80,
+      "special_defense": 85,
+      "speed": 102
+    },
+    "initial_price": 580.0,
+    "is_legendary": false,
+    "is_mythical": false,
+    "abilities": [
+      "Earth Tremor",
+      "Rock Spike",
+      "Dragon Slash",
+      "Assault"
+    ]
   },
   {
-    "name": "Gyarados", "type": "water", "secondary_type": "flying",
-    "description": "Once it appears, it goes on a rampage. It remains enraged until it demolishes everything around it.",
-    "base_stats": {"hp": 95, "attack": 125, "defense": 79, "special_attack": 60, "special_defense": 100, "speed": 81},
-    "initial_price": 380.00, "is_legendary": false, "is_mythical": false,
-    "abilities": ["Surf", "Hydro Pump", "Ice Beam", "Crunch"]
+    "name": "Bearloch",
+    "type": "dark",
+    "secondary_type": "rock",
+    "description": "A ferocious armored bear dwelling in subterranean caverns. Its roar can cause rockslides and scare away predators.",
+    "base_stats": {
+      "hp": 100,
+      "attack": 134,
+      "defense": 110,
+      "special_attack": 95,
+      "special_defense": 100,
+      "speed": 61
+    },
+    "initial_price": 570.0,
+    "is_legendary": false,
+    "is_mythical": false,
+    "abilities": [
+      "Rock Spike",
+      "Fierce Bite",
+      "Dark Pulse",
+      "Earth Tremor"
+    ]
   },
   {
-    "name": "Sylveon", "type": "fairy",
-    "description": "It sends a soothing aura from its ribbonlike feelers to calm fights and conflicts.",
-    "base_stats": {"hp": 95, "attack": 65, "defense": 65, "special_attack": 110, "special_defense": 130, "speed": 60},
-    "initial_price": 300.00, "is_legendary": false, "is_mythical": false,
-    "abilities": ["Moonblast", "Play Rough", "Hyper Beam", "Quick Attack"]
+    "name": "Ampystoma",
+    "type": "water",
+    "secondary_type": "electric",
+    "description": "An amphibious salamander capable of producing electric currents through its slick skin. At home in wetlands and rivers.",
+    "base_stats": {
+      "hp": 95,
+      "attack": 90,
+      "defense": 80,
+      "special_attack": 105,
+      "special_defense": 90,
+      "speed": 80
+    },
+    "initial_price": 410.0,
+    "is_legendary": false,
+    "is_mythical": false,
+    "abilities": [
+      "Aqua Wave",
+      "Static Shock",
+      "Water Cannon",
+      "Thunder Strike"
+    ]
   },
   {
-    "name": "Scizor", "type": "bug", "secondary_type": "steel",
-    "description": "Its claws are as hard as steel. It can crush and defeat any opponent with them.",
-    "base_stats": {"hp": 70, "attack": 130, "defense": 100, "special_attack": 55, "special_defense": 80, "speed": 65},
-    "initial_price": 340.00, "is_legendary": false, "is_mythical": false,
-    "abilities": ["X-Scissor", "Iron Head", "Bullet Punch", "Quick Attack"]
+    "name": "Angesnow",
+    "type": "ice",
+    "secondary_type": "fairy",
+    "description": "A luminous winter spirit resembling fresh powdery snow. It brings gentle breezes and tranquil frost wherever it goes.",
+    "base_stats": {
+      "hp": 95,
+      "attack": 65,
+      "defense": 65,
+      "special_attack": 110,
+      "special_defense": 130,
+      "speed": 60
+    },
+    "initial_price": 390.0,
+    "is_legendary": false,
+    "is_mythical": false,
+    "abilities": [
+      "Moonbeam",
+      "Frost Ray",
+      "Avalanche",
+      "Dark Pulse"
+    ]
   },
   {
-    "name": "Alakazam", "type": "psychic",
-    "description": "It has an incredibly high IQ. It remembers everything that has happened in the world.",
-    "base_stats": {"hp": 55, "attack": 50, "defense": 45, "special_attack": 135, "special_defense": 95, "speed": 120},
-    "initial_price": 480.00, "is_legendary": false, "is_mythical": false,
-    "abilities": ["Psychic", "Shadow Ball", "Aura Sphere", "Hyper Beam"]
+    "name": "Bamboon",
+    "type": "grass",
+    "secondary_type": "fighting",
+    "description": "A swift ape that swings through bamboo canopies. It wields hardened stems as martial staves in battle.",
+    "base_stats": {
+      "hp": 85,
+      "attack": 110,
+      "defense": 80,
+      "special_attack": 60,
+      "special_defense": 80,
+      "speed": 95
+    },
+    "initial_price": 340.0,
+    "is_legendary": false,
+    "is_mythical": false,
+    "abilities": [
+      "Vine Lash",
+      "Assault",
+      "Solar Ray",
+      "Swift Strike"
+    ]
   },
   {
-    "name": "Rayquaza", "type": "dragon", "secondary_type": "flying",
-    "description": "It lives in the ozone layer and descends to the ground when Groudon and Kyogre clash.",
-    "base_stats": {"hp": 105, "attack": 150, "defense": 90, "special_attack": 150, "special_defense": 90, "speed": 95},
-    "initial_price": 3000.00, "is_legendary": true, "is_mythical": false,
-    "abilities": ["Dragon Pulse", "Hyper Beam", "Fire Blast", "Surf"]
+    "name": "Bewhich",
+    "type": "psychic",
+    "secondary_type": "dark",
+    "description": "An enigmatic sorceress wrapped in starry cloaks. It bends illusions and alters perception with mystic runes.",
+    "base_stats": {
+      "hp": 60,
+      "attack": 60,
+      "defense": 55,
+      "special_attack": 135,
+      "special_defense": 95,
+      "speed": 120
+    },
+    "initial_price": 480.0,
+    "is_legendary": false,
+    "is_mythical": false,
+    "abilities": [
+      "Arcane Eye",
+      "Shadow Blob",
+      "Dark Pulse",
+      "Energy Blast"
+    ]
   },
   {
-    "name": "Mew", "type": "psychic",
-    "description": "It appears only to those who are pure of heart. It can learn any move known by any Creature.",
-    "base_stats": {"hp": 100, "attack": 100, "defense": 100, "special_attack": 100, "special_defense": 100, "speed": 100},
-    "initial_price": 5000.00, "is_legendary": false, "is_mythical": true,
-    "abilities": ["Psychic", "Aura Sphere", "Moonblast", "Hyper Beam"]
+    "name": "Altie",
+    "type": "flying",
+    "secondary_type": "dragon",
+    "description": "A celestial guardian of high altitudes. It circles the upper stratosphere maintaining atmospheric balance.",
+    "base_stats": {
+      "hp": 105,
+      "attack": 150,
+      "defense": 90,
+      "special_attack": 150,
+      "special_defense": 90,
+      "speed": 95
+    },
+    "initial_price": 3000.0,
+    "is_legendary": true,
+    "is_mythical": false,
+    "abilities": [
+      "Gale Slash",
+      "Sky Strike",
+      "Dragon Slash",
+      "Hyper Beam"
+    ]
   },
   {
-    "name": "Greninja", "type": "water", "secondary_type": "dark",
-    "description": "It appears and vanishes with a ninja's grace. It toys with its enemies using swift movements.",
-    "base_stats": {"hp": 72, "attack": 95, "defense": 67, "special_attack": 103, "special_defense": 71, "speed": 122},
-    "initial_price": 520.00, "is_legendary": false, "is_mythical": false,
-    "abilities": ["Surf", "Dark Pulse", "Ice Beam", "Hydro Pump"]
+    "name": "Angrito",
+    "type": "normal",
+    "secondary_type": "psychic",
+    "description": "A curious and lively creature capable of channeling intense psychic emotion into physical resilience.",
+    "base_stats": {
+      "hp": 100,
+      "attack": 100,
+      "defense": 100,
+      "special_attack": 100,
+      "special_defense": 100,
+      "speed": 100
+    },
+    "initial_price": 5000.0,
+    "is_legendary": false,
+    "is_mythical": true,
+    "abilities": [
+      "Arcane Eye",
+      "Energy Blast",
+      "Wild Charge",
+      "Swift Strike"
+    ]
   },
   {
-    "name": "Gardevoir", "type": "psychic", "secondary_type": "fairy",
-    "description": "It has the ability to predict the future. It senses the feelings of others with its psychic power.",
-    "base_stats": {"hp": 68, "attack": 65, "defense": 65, "special_attack": 125, "special_defense": 115, "speed": 80},
-    "initial_price": 360.00, "is_legendary": false, "is_mythical": false,
-    "abilities": ["Psychic", "Moonblast", "Shadow Ball", "Hyper Beam"]
+    "name": "Abesnaki",
+    "type": "water",
+    "secondary_type": "dark",
+    "description": "A shadowy serpent-mask shinobi creature that glides effortlessly through water and mist before striking with precision.",
+    "base_stats": {
+      "hp": 72,
+      "attack": 95,
+      "defense": 67,
+      "special_attack": 103,
+      "special_defense": 71,
+      "speed": 122
+    },
+    "initial_price": 460.0,
+    "is_legendary": false,
+    "is_mythical": false,
+    "abilities": [
+      "Aqua Wave",
+      "Dark Pulse",
+      "Frost Ray",
+      "Water Cannon"
+    ]
   },
   {
-    "name": "Metagross", "type": "steel", "secondary_type": "psychic",
-    "description": "It is formed by the fusion of two Metangs. It has four brains and can process complex calculations.",
-    "base_stats": {"hp": 80, "attack": 135, "defense": 130, "special_attack": 95, "special_defense": 90, "speed": 70},
-    "initial_price": 620.00, "is_legendary": false, "is_mythical": false,
-    "abilities": ["Flash Cannon", "Earthquake", "Psychic", "Hyper Beam"]
+    "name": "Botbot",
+    "type": "steel",
+    "secondary_type": "electric",
+    "description": "An advanced clockwork socket automaton that computes battlefield trajectories with mechanical certainty.",
+    "base_stats": {
+      "hp": 80,
+      "attack": 120,
+      "defense": 130,
+      "special_attack": 85,
+      "special_defense": 90,
+      "speed": 70
+    },
+    "initial_price": 520.0,
+    "is_legendary": false,
+    "is_mythical": false,
+    "abilities": [
+      "Steel Ram",
+      "Flash Beam",
+      "Static Shock",
+      "Mach Punch"
+    ]
   }
 ]

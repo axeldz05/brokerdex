@@ -2,22 +2,38 @@
   {
     "name": "Basic Egg",
     "description": "A common egg that may contain a basic creature. Safe and affordable for new trainers.",
-    "price": 500.00,
+    "price": 500.0,
     "hatch_duration_hours": 1,
-    "creature_pool": ["Rockitten", "Raichu", "Scizor", "Gyarados"]
+    "creature_pool": [
+      "Rockitten",
+      "Bolt",
+      "Anoleaf",
+      "Botbot"
+    ]
   },
   {
     "name": "Premium Egg",
     "description": "A rare egg that can hatch into powerful creatures with high battle potential.",
-    "price": 2500.00,
+    "price": 2500.0,
     "hatch_duration_hours": 3,
-    "creature_pool": ["Dragonite", "Garchomp", "Tyranitar", "Gyarados", "Lucario", "Metagross"]
+    "creature_pool": [
+      "Allagon",
+      "Brickhemoth",
+      "Bearloch",
+      "Bigfin",
+      "Boxali",
+      "Angesnow"
+    ]
   },
   {
     "name": "Legendary Egg",
     "description": "An extremely rare egg that contains mythical or legendary creatures. High risk, high reward.",
-    "price": 10000.00,
+    "price": 10000.0,
     "hatch_duration_hours": 6,
-    "creature_pool": ["Mewtwo", "Rayquaza", "Mew"]
+    "creature_pool": [
+      "Anu",
+      "Altie",
+      "Angrito"
+    ]
   }
 ]

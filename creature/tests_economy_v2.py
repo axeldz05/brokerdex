@@ -53,14 +53,14 @@ class ClosedEconomyPhasesTestCase(TestCase):
         self.user2.save(update_fields=["balance_cents"])
 
         # Abilities
-        self.flamethrower = Ability.objects.create(
-            name="Flamethrower", power=90, damage_class="special"
+        self.fire_claw = Ability.objects.create(
+            name="Fire Claw", power=90, damage_class="special"
         )
-        self.surf = Ability.objects.create(
-            name="Surf", power=90, damage_class="special"
+        self.aqua_wave = Ability.objects.create(
+            name="Aqua Wave", power=90, damage_class="special"
         )
-        self.vine_whip = Ability.objects.create(
-            name="Vine Whip", power=45, damage_class="physical"
+        self.vine_lash = Ability.objects.create(
+            name="Vine Lash", power=45, damage_class="physical"
         )
 
         # Creatures
@@ -80,7 +80,7 @@ class ClosedEconomyPhasesTestCase(TestCase):
             speed=100,
             description="Fire Dragon",
         )
-        self.agnidon.abilities.add(self.flamethrower)
+        self.agnidon.abilities.add(self.fire_claw)
 
         self.bigfin = Creature.objects.create(
             name="Bigfin",
@@ -98,7 +98,7 @@ class ClosedEconomyPhasesTestCase(TestCase):
             speed=78,
             description="Water Shell",
         )
-        self.bigfin.abilities.add(self.surf)
+        self.bigfin.abilities.add(self.aqua_wave)
 
         self.anoleaf = Creature.objects.create(
             name="Anoleaf",
@@ -116,7 +116,7 @@ class ClosedEconomyPhasesTestCase(TestCase):
             speed=80,
             description="Grass Flower",
         )
-        self.anoleaf.abilities.add(self.vine_whip)
+        self.anoleaf.abilities.add(self.vine_lash)
 
     def _total_system_cash(self):
         user_cents = sum(
@@ -193,7 +193,7 @@ class ClosedEconomyPhasesTestCase(TestCase):
         self.assertEqual(product, Decimal("1.00000000"))
 
     def test_battle_transfers_liquidity_between_reserves_and_pays_dividends(self):
-        # Setup: Ash owns 10 units of Agnidon, Gary owns 10 units of Bigfin
+        # Setup: Alex owns 10 units of Agnidon, Maya owns 10 units of Bigfin
         Portfolio.objects.create(
             owner=self.user1,
             creature=self.agnidon,
@@ -239,7 +239,7 @@ class ClosedEconomyPhasesTestCase(TestCase):
             int(Decimal(str(initial_bigfin_reserve)) * Decimal("0.10")),
         )
 
-        # 2. Battle Dividend: 0.2% of dividend_pool_cents paid to Ash (the holder)
+        # 2. Battle Dividend: 0.2% of dividend_pool_cents paid to Alex (the holder)
         # Expected pot = int(100_000_00 * 0.002) = 200_00 cents = $200.00
         expected_dividend = int(
             Decimal(str(initial_dividend_pool)) * Decimal("0.002")
@@ -375,12 +375,12 @@ class ClosedEconomyPhasesTestCase(TestCase):
         )
         self.assertEqual(fund.status, TrainingFund.Status.OPEN)
 
-        # Ash contributes 1,000 cents (u = 0 / 5000 = 0.0 <= 0.30 -> tranche 1.40x)
+        # Alex contributes 1,000 cents (u = 0 / 5000 = 0.0 <= 0.30 -> tranche 1.40x)
         c1 = TrainingService.contribute_to_fund(self.user1, fund.pk, 1000)
         self.assertEqual(c1.tranche_multiplier, Decimal("1.40"))
         self.assertEqual(c1.weighted_shares, Decimal("1400.0000"))
 
-        # Gary contributes 2,000 cents (u = 1000 / 5000 = 0.20 <= 0.30 -> tranche 1.40x)
+        # Maya contributes 2,000 cents (u = 1000 / 5000 = 0.20 <= 0.30 -> tranche 1.40x)
         c2 = TrainingService.contribute_to_fund(self.user2, fund.pk, 2000)
         self.assertEqual(c2.tranche_multiplier, Decimal("1.40"))
         self.assertEqual(c2.weighted_shares, Decimal("2800.0000"))
@@ -390,7 +390,7 @@ class ClosedEconomyPhasesTestCase(TestCase):
         initial_dividend_pool = self.treasury.dividend_pool_cents
         initial_equity = self.treasury.company_equity_cents
 
-        # Ash contributes remaining 2,000 cents (u = 3000 / 5000 = 0.60 > 0.30 <= 0.75 -> tranche 1.00x)
+        # Alex contributes remaining 2,000 cents (u = 3000 / 5000 = 0.60 > 0.30 <= 0.75 -> tranche 1.00x)
         c3 = TrainingService.contribute_to_fund(self.user1, fund.pk, 2000)
         self.assertEqual(c3.tranche_multiplier, Decimal("1.00"))
 
@@ -436,16 +436,16 @@ class ClosedEconomyPhasesTestCase(TestCase):
             soft_cap_cents=1000,
             hard_cap_cents=2000,
         )
-        # Ash contributes 1,000 (1.40x = 1400 shares)
+        # Alex contributes 1,000 (1.40x = 1400 shares)
         c1 = TrainingService.contribute_to_fund(self.user1, fund.pk, 1000)
-        # Gary contributes 1,000 (1.00x = 1000 shares)
+        # Maya contributes 1,000 (1.00x = 1000 shares)
         c2 = TrainingService.contribute_to_fund(self.user2, fund.pk, 1000)
 
         fund.refresh_from_db()
         self.assertEqual(fund.status, TrainingFund.Status.COMPLETED)
         self.assertEqual(fund.remaining_reward_battles, 3)
 
-        # Ash also holds 10 units in portfolio
+        # Alex also holds 10 units in portfolio
         Portfolio.objects.create(
             owner=self.user1,
             creature=self.agnidon,
@@ -512,7 +512,7 @@ class ClosedEconomyPhasesTestCase(TestCase):
             hard_cap_cents=10000,
             duration_minutes=15,
         )
-        # Ash contributes 2,000 (below soft cap of 5,000)
+        # Alex contributes 2,000 (below soft cap of 5,000)
         initial_ash_balance = self.user1.balance_cents
         cash_before = self._total_system_cash()
 
@@ -531,7 +531,7 @@ class ClosedEconomyPhasesTestCase(TestCase):
         self.user1.refresh_from_db()
 
         self.assertEqual(fund.status, TrainingFund.Status.EXPIRED_REFUNDED)
-        # Ash fully refunded
+        # Alex fully refunded
         self.assertEqual(self.user1.balance_cents, initial_ash_balance)
 
         # Idempotent: running expire_funds again does nothing

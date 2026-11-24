@@ -24,7 +24,7 @@ class PriceTickerWebsocketTests(TestCase):
             {
                 "type": "price_update",
                 "creature_id": "test-uuid-1234",
-                "creature_name": "Rockitten",
+                "creature_name": "Bolt",
                 "current_price": "155.00",
                 "previous_close": "150.00",
                 "change": "5.00",
@@ -35,7 +35,7 @@ class PriceTickerWebsocketTests(TestCase):
         response = await communicator.receive_json_from()
         self.assertEqual(response["type"], "price_update")
         self.assertEqual(response["creature_id"], "test-uuid-1234")
-        self.assertEqual(response["creature_name"], "Rockitten")
+        self.assertEqual(response["creature_name"], "Bolt")
         self.assertEqual(response["current_price"], "155.00")
         self.assertEqual(response["change"], "5.00")
         self.assertEqual(response["change_pct"], "3.33")

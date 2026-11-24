@@ -63,8 +63,8 @@ uv run python manage.py seed_all
 ```
 
 `seed_all --clear --demo` borra datos y solo debe usarse con confirmación
-explícita en una base local descartable. El seed puede descargar sprites desde
-LocalSprites.
+explícita en una base local descartable. El seed carga los sprites locales de
+Tuxemon desde `seed_data/sprites/`.
 
 ### Población Masiva y Simulación de Mercado
 

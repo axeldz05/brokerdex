@@ -40,7 +40,7 @@ class SimulationStateTestCase(TestCase):
         self.assertTrue(is_simulation_active())
 
     def test_record_event_and_stats(self):
-        record_simulation_event('MOMENTUM', 'BUY', 'Rockitten', Decimal('2.0'), 'Trend follow')
+        record_simulation_event('MOMENTUM', 'BUY', 'Bolt', Decimal('2.0'), 'Trend follow')
         stats = get_simulation_stats()
         self.assertEqual(stats['total_events'], 1)
         self.assertEqual(stats['strategies']['MOMENTUM'], 1)
@@ -57,13 +57,13 @@ class SimulationStrategiesTestCase(TestCase):
             balance_cents=100_000_00,  # $100,000
         )
         self.ability = Ability.objects.create(
-            name='Thunderbolt',
+            name='Static Shock',
             ability_type='electric',
             damage_class='special',
             power=90,
         )
         self.creature = Creature.objects.create(
-            name='Rockitten',
+            name='Bolt',
             type='electric',
             current_price=Decimal('100.00'),
             previous_close=Decimal('100.00'),
@@ -101,7 +101,7 @@ class SimulationStrategiesTestCase(TestCase):
         self.assertIsNotNone(event)
         self.assertEqual(event['strategy'], 'VALUE')
         self.assertEqual(event['action'], 'BUY')
-        self.assertEqual(event['creature'], 'Rockitten')
+        self.assertEqual(event['creature'], 'Bolt')
 
     def test_value_strategy_sells_when_overvalued(self):
         # Creature is 25% overvalued vs reference price
@@ -140,7 +140,7 @@ class SimulationEngineTestCase(TestCase):
             balance_cents=50_000_00,
         )
         self.creature = Creature.objects.create(
-            name='Raichu',
+            name='Arthrobolt',
             type='electric',
             current_price=Decimal('150.00'),
             previous_close=Decimal('150.00'),

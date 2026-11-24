@@ -83,7 +83,7 @@ uv run python manage.py seed_all --demo
 ```
 
 `seed_all --clear --demo` es destructivo y requiere confirmación explícita en
-una base local descartable. El seed puede descargar imágenes desde LocalSprites; no
+una base local descartable. El seed carga los sprites locales de Tuxemon; no
 usarlo como setup de test. `seed_market` solo es un alias deprecado.
 
 ## Verificación proporcional al cambio

@@ -28,12 +28,12 @@ class TradingIntegrationTests(TestCase):
         self.user.save()
 
         self.ability = Ability.objects.create(
-            name='Thunderbolt', ability_type='electric',
+            name='Static Shock', ability_type='electric',
             damage_class='special', power=90,
         )
 
         self.creature = Creature.objects.create(
-            name='Rockitten',
+            name='Bolt',
             type='electric',
             current_price=Decimal('150.00'),
             previous_close=Decimal('145.00'),
@@ -57,7 +57,7 @@ class TradingIntegrationTests(TestCase):
         self._login()
         response = self.client.get(reverse('trading:market'))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Rockitten')
+        self.assertContains(response, 'Bolt')
         self.assertContains(response, '$150.00')
 
     def test_creature_detail_shows_price_and_forms(self):
@@ -65,7 +65,7 @@ class TradingIntegrationTests(TestCase):
         url = reverse('trading:creature_detail', args=[self.creature.pk])
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Rockitten')
+        self.assertContains(response, 'Bolt')
         self.assertContains(response, '$150.00')
         self.assertContains(response, 'Buy')
         self.assertContains(response, 'Sell')
@@ -221,7 +221,7 @@ class TradingIntegrationTests(TestCase):
         TradingEngine.execute_market_buy(self.user, self.creature, Decimal('4'))
         response = self.client.get(reverse('trading:portfolio'))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Rockitten')
+        self.assertContains(response, 'Bolt')
         self.assertContains(response, '4')
 
     def test_order_history_shows_orders(self):
@@ -229,7 +229,7 @@ class TradingIntegrationTests(TestCase):
         TradingEngine.execute_market_buy(self.user, self.creature, Decimal('1'))
         response = self.client.get(reverse('trading:orders'))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Rockitten')
+        self.assertContains(response, 'Bolt')
         self.assertContains(response, 'Buy')
         self.assertContains(response, 'Filled')
 
@@ -243,7 +243,7 @@ class TradingIntegrationTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response['Content-Type'], 'application/json')
         data = response.json()
-        self.assertEqual(data['creature'], 'Rockitten')
+        self.assertEqual(data['creature'], 'Bolt')
         self.assertEqual(data['interval'], '1H')
         self.assertGreaterEqual(len(data['data']), 1)
         entry = data['data'][0]

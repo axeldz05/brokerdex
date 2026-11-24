@@ -134,9 +134,9 @@ class PricingEngineV2TestCase(TestCase):
         self.assertEqual(delta_balanced, Decimal("0"))
 
     def test_value_strategy_does_not_loop_dump_legendaries(self):
-        # Rayquaza: legendary with reference_price = 3000.00 and current_price = 3000.00
-        rayquaza = Creature.objects.create(
-            name="RayquazaTest",
+        # Altie: legendary with reference_price = 3000.00 and current_price = 3000.00
+        altie = Creature.objects.create(
+            name="AltieTest",
             type="dragon",
             current_price=Decimal("3000.00"),
             previous_close=Decimal("3000.00"),
@@ -147,7 +147,7 @@ class PricingEngineV2TestCase(TestCase):
         )
         Portfolio.objects.create(
             owner=self.seller,
-            creature=rayquaza,
+            creature=altie,
             quantity=Decimal("2.0"),
             average_cost=Decimal("3000.00"),
         )
@@ -155,5 +155,5 @@ class PricingEngineV2TestCase(TestCase):
         # Because rarity multiplier is removed from spot price, spot price remains 3000.00 (0% premium)
         # ValueStrategy requires >= 15% premium to trigger sell
         strategy = ValueStrategy()
-        event = strategy.evaluate_and_execute(self.seller, [rayquaza])
+        event = strategy.evaluate_and_execute(self.seller, [altie])
         self.assertIsNone(event)

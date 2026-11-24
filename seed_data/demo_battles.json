@@ -5,34 +5,94 @@
     "outcome": "creature_1_wins",
     "turns": 5,
     "log": [
-      {"turn": 1, "attacker": "Agnidon", "ability": "Flamethrower", "damage": 35},
-      {"turn": 2, "attacker": "Bigfin", "ability": "Hydro Pump", "damage": 45},
-      {"turn": 3, "attacker": "Agnidon", "ability": "Dragon Claw", "damage": 30},
-      {"turn": 4, "attacker": "Bigfin", "ability": "Surf", "damage": 38},
-      {"turn": 5, "attacker": "Agnidon", "ability": "Flamethrower", "damage": 40}
+      {
+        "turn": 1,
+        "attacker": "Agnidon",
+        "ability": "Fire Claw",
+        "damage": 35
+      },
+      {
+        "turn": 2,
+        "attacker": "Bigfin",
+        "ability": "Water Cannon",
+        "damage": 45
+      },
+      {
+        "turn": 3,
+        "attacker": "Agnidon",
+        "ability": "Dragon Slash",
+        "damage": 30
+      },
+      {
+        "turn": 4,
+        "attacker": "Bigfin",
+        "ability": "Aqua Wave",
+        "damage": 38
+      },
+      {
+        "turn": 5,
+        "attacker": "Agnidon",
+        "ability": "Fire Claw",
+        "damage": 40
+      }
     ]
   },
   {
-    "creature_1": "Dragonite",
-    "creature_2": "Garchomp",
+    "creature_1": "Allagon",
+    "creature_2": "Brickhemoth",
     "outcome": "creature_1_wins",
     "turns": 4,
     "log": [
-      {"turn": 1, "attacker": "Dragonite", "ability": "Dragon Claw", "damage": 42},
-      {"turn": 2, "attacker": "Garchomp", "ability": "Earthquake", "damage": 38},
-      {"turn": 3, "attacker": "Dragonite", "ability": "Dragon Pulse", "damage": 45},
-      {"turn": 4, "attacker": "Dragonite", "ability": "Hyper Beam", "damage": 55}
+      {
+        "turn": 1,
+        "attacker": "Allagon",
+        "ability": "Dragon Slash",
+        "damage": 42
+      },
+      {
+        "turn": 2,
+        "attacker": "Brickhemoth",
+        "ability": "Earth Tremor",
+        "damage": 38
+      },
+      {
+        "turn": 3,
+        "attacker": "Allagon",
+        "ability": "Dragon Pulse",
+        "damage": 45
+      },
+      {
+        "turn": 4,
+        "attacker": "Allagon",
+        "ability": "Hyper Beam",
+        "damage": 55
+      }
     ]
   },
   {
-    "creature_1": "Mewtwo",
-    "creature_2": "Alakazam",
+    "creature_1": "Anu",
+    "creature_2": "Bewhich",
     "outcome": "creature_1_wins",
     "turns": 3,
     "log": [
-      {"turn": 1, "attacker": "Mewtwo", "ability": "Psychic", "damage": 60},
-      {"turn": 2, "attacker": "Alakazam", "ability": "Shadow Ball", "damage": 30},
-      {"turn": 3, "attacker": "Mewtwo", "ability": "Aura Sphere", "damage": 70}
+      {
+        "turn": 1,
+        "attacker": "Anu",
+        "ability": "Arcane Eye",
+        "damage": 60
+      },
+      {
+        "turn": 2,
+        "attacker": "Bewhich",
+        "ability": "Shadow Blob",
+        "damage": 30
+      },
+      {
+        "turn": 3,
+        "attacker": "Anu",
+        "ability": "Energy Blast",
+        "damage": 70
+      }
     ]
   }
 ]

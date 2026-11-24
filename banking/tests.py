@@ -620,8 +620,8 @@ class InvestViewTests(TestCase):
             password="testpass123",
         )
         self.c1 = Creature.objects.create(
-            name="Agnidon",
-            description="Fire lizard",
+            name="Bolt",
+            description="Electric fire creature",
             type=PrimaryType.FIRE,
             current_price=Decimal("50.00"),
             previous_close=Decimal("40.00"),
@@ -635,7 +635,7 @@ class InvestViewTests(TestCase):
         )
         self.c2 = Creature.objects.create(
             name="Anoleaf",
-            description="Seed dinosaur",
+            description="Leaf forest creature",
             type=PrimaryType.GRASS,
             current_price=Decimal("80.00"),
             previous_close=Decimal("90.00"),
@@ -648,8 +648,8 @@ class InvestViewTests(TestCase):
             speed=45,
         )
         self.c3 = Creature.objects.create(
-            name="Bigfin",
-            description="Tiny turtle",
+            name="Rockitten",
+            description="Water rock creature",
             type=PrimaryType.WATER,
             current_price=Decimal("60.00"),
             previous_close=Decimal("70.00"),
@@ -673,7 +673,7 @@ class InvestViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         creatures = list(response.context["creatures"])
         names = [c.name for c in creatures]
-        self.assertEqual(names, ["Anoleaf", "Agnidon", "Bigfin"])
+        self.assertEqual(names, ["Anoleaf", "Bolt", "Rockitten"])
 
     def test_invest_sorting_by_price_desc(self):
         self.client.force_login(self.user)
@@ -684,7 +684,7 @@ class InvestViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         creatures = list(response.context["creatures"])
         names = [c.name for c in creatures]
-        self.assertEqual(names, ["Anoleaf", "Bigfin", "Agnidon"])
+        self.assertEqual(names, ["Anoleaf", "Rockitten", "Bolt"])
 
     def test_invest_sorting_by_price_asc(self):
         self.client.force_login(self.user)
@@ -695,7 +695,7 @@ class InvestViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         creatures = list(response.context["creatures"])
         names = [c.name for c in creatures]
-        self.assertEqual(names, ["Agnidon", "Bigfin", "Anoleaf"])
+        self.assertEqual(names, ["Bolt", "Rockitten", "Anoleaf"])
 
     def test_invest_sorting_by_change_desc(self):
         self.client.force_login(self.user)
@@ -706,7 +706,7 @@ class InvestViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         creatures = list(response.context["creatures"])
         names = [c.name for c in creatures]
-        self.assertEqual(names, ["Anoleaf", "Bigfin", "Agnidon"])
+        self.assertEqual(names, ["Anoleaf", "Rockitten", "Bolt"])
 
     def test_invest_sorting_by_type_asc(self):
         self.client.force_login(self.user)
@@ -728,7 +728,7 @@ class InvestViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         creatures = list(response.context["creatures"])
         names = [c.name for c in creatures]
-        self.assertEqual(names, ["Anoleaf", "Agnidon", "Bigfin"])
+        self.assertEqual(names, ["Anoleaf", "Bolt", "Rockitten"])
 
     def test_invest_template_sanitized_and_creature_links(self):
         self.client.force_login(self.user)
