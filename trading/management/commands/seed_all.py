@@ -24,9 +24,10 @@ from creature.models import (
     TrainingContribution,
     TrainingFund,
     TrainingSaturation,
+    TrainingSession,
 )
 from creature.services import BattleService, TrainingService
-from trading.models import PriceHistory, Trade, Portfolio, SystemTreasury
+from trading.models import PriceHistory, Trade, Portfolio, SystemTreasury, Order, Notification
 
 
 
@@ -107,16 +108,20 @@ class Command(BaseCommand):
         TrainingContribution.objects.all().delete()
         TrainingFund.objects.all().delete()
         TrainingSaturation.objects.all().delete()
+        TrainingSession.objects.all().delete()
         BattleInvestment.objects.all().delete()
         BattleAction.objects.all().delete()
         BattleParticipant.objects.all().delete()
         Battle.objects.all().delete()
+        Incubation.objects.all().delete()
+        Trade.objects.all().delete()
+        Order.objects.all().delete()
+        PriceHistory.objects.all().delete()
+        Portfolio.objects.all().delete()
+        Notification.objects.all().delete()
         EggTemplate.objects.all().delete()
         Creature.objects.all().delete()
         Ability.objects.all().delete()
-        PriceHistory.objects.all().delete()
-        Trade.objects.all().delete()
-        Portfolio.objects.all().delete()
         Account.objects.filter(username__startswith='sim_').delete()
 
     def _seed_abilities(self):
@@ -266,10 +271,12 @@ class Command(BaseCommand):
             )
             if was_created:
                 user.set_password(data['password'])
+                user.save()
                 created += 1
-            # Always reset balance to the configured amount
-            user.balance_cents = balance
-            user.save(update_fields=['balance_cents'])
+            else:
+                user.set_password(data['password'])
+                user.balance_cents = balance
+                user.save(update_fields=['password', 'balance_cents'])
 
         self.stdout.write(f"  Demo users: {created} new, {len(users_data) - created} existing (balances reset) / {len(users_data)} total")
 
